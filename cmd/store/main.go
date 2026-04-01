@@ -39,7 +39,7 @@ func main() {
 	removeCmd := &cobra.Command{
 		Use:   "remove <name>",
 		Short: "Remove a store's symlink",
-		Long:  "Removes the symlink for the named store. Does not delete the config entry.",
+		Long:  "Removes the symlink for the named store and deletes its config entry.",
 		Args:  cobra.ExactArgs(1),
 		RunE:  runRemove,
 	}
@@ -47,7 +47,7 @@ func main() {
 	removeAllCmd := &cobra.Command{
 		Use:   "removeall",
 		Short: "Remove all store symlinks",
-		Long:  "Removes symlinks for all stores defined in the config.",
+		Long:  "Removes symlinks and config entries for all stores defined in the config.",
 		RunE:  runRemoveAll,
 	}
 
@@ -96,16 +96,17 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Check that the store directory exists.
+	// Ensure the store directory exists, creating it if needed.
 	storePath := root + "/" + name
 	fi, err := os.Stat(storePath)
 	if os.IsNotExist(err) {
-		return fmt.Errorf("directory %q does not exist in %s", name, root)
-	}
-	if err != nil {
+		if err := os.MkdirAll(storePath, 0o755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", storePath, err)
+		}
+		fmt.Printf("Created directory %s\n", storePath)
+	} else if err != nil {
 		return fmt.Errorf("failed to stat %s: %w", storePath, err)
-	}
-	if !fi.IsDir() {
+	} else if !fi.IsDir() {
 		return fmt.Errorf("%q is not a directory", name)
 	}
 
@@ -182,7 +183,12 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("Removed symlink for %s (%s)\n", name, entry.Target)
+	delete(cfg.Stores, name)
+	if err := config.Save(root, cfg); err != nil {
+		return fmt.Errorf("failed to remove config entry: %w", err)
+	}
+
+	fmt.Printf("Removed store %s (%s)\n", name, entry.Target)
 	return nil
 }
 
@@ -197,8 +203,34 @@ func runRemoveAll(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Println("Removing all store symlinks:")
-	return storeops.StoreRemoveAll(root, cfg)
+	if len(cfg.Stores) == 0 {
+		return fmt.Errorf("no stores defined in config")
+	}
+
+	fmt.Println("Removing all stores:")
+	var errors []error
+	for name, entry := range cfg.Stores {
+		if err := storeops.StoreRemove(root, name, entry); err != nil {
+			errors = append(errors, err)
+		} else {
+			delete(cfg.Stores, name)
+			fmt.Printf("  removed %s (%s)\n", name, entry.Target)
+		}
+	}
+
+	if err := config.Save(root, cfg); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	if len(errors) > 0 {
+		fmt.Println()
+		for _, err := range errors {
+			fmt.Printf("  error: %s\n", err)
+		}
+		return fmt.Errorf("%d store(s) failed", len(errors))
+	}
+
+	return nil
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
