@@ -14,12 +14,15 @@ import (
 	storeops "github.com/cush/store/internal/store"
 )
 
+var version = "dev"
+
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   "store",
-		Short: "A simpler alternative to GNU stow",
-		Long:  "store manages symlinks for your dotfiles without requiring mirrored directory structures.",
-		RunE:  runStoreAll,
+		Use:     "store",
+		Short:   "A simpler alternative to GNU stow",
+		Long:    "store manages symlinks for your dotfiles without requiring mirrored directory structures.",
+		Version: version,
+		RunE:    runStoreAll,
 	}
 
 	initCmd := &cobra.Command{
@@ -60,7 +63,15 @@ func main() {
 		RunE:  runStatus,
 	}
 
-	rootCmd.AddCommand(initCmd, addCmd, removeCmd, removeAllCmd, statusCmd)
+	versionCmd := &cobra.Command{
+		Use:   "version",
+		Short: "Print the version",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("store version %s\n", version)
+		},
+	}
+
+	rootCmd.AddCommand(initCmd, addCmd, removeCmd, removeAllCmd, statusCmd, versionCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
