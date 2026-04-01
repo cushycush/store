@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -123,6 +124,19 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	if target == "" {
 		return fmt.Errorf("target path cannot be empty")
+	}
+
+	// Resolve to absolute path so the config is cwd-independent.
+	// Paths starting with ~ are kept as-is for portability.
+	expanded, err := config.ExpandHome(target)
+	if err != nil {
+		return err
+	}
+	if !filepath.IsAbs(expanded) {
+		target, err = filepath.Abs(target)
+		if err != nil {
+			return fmt.Errorf("failed to resolve target path: %w", err)
+		}
 	}
 
 	// Load existing config (or create fresh if somehow missing).
