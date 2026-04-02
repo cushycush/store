@@ -15,7 +15,15 @@ const (
 
 // StoreEntry represents a single store's configuration.
 type StoreEntry struct {
-	Target string `yaml:"target"`
+	Target   string   `yaml:"target,omitempty"`
+	Files    []string `yaml:"files,omitempty"`
+	Patterns []string `yaml:"patterns,omitempty"`
+}
+
+// HasFileMode returns true if the entry specifies individual files or patterns
+// rather than a whole-directory symlink.
+func (e StoreEntry) HasFileMode() bool {
+	return len(e.Files) > 0 || len(e.Patterns) > 0
 }
 
 // Config represents the full .store/config.yaml file.
