@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -32,13 +30,52 @@ func main() {
 		RunE:  runInit,
 	}
 
+	// --- add command ---
+	var addTarget string
+	var addFiles []string
+	var addPatterns []string
+
 	addCmd := &cobra.Command{
 		Use:   "add <name>",
-		Short: "Add a store and create its symlink",
-		Long:  "Prompts for the target path, saves to config, and creates the directory symlink.",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runAdd,
+		Short: "Add a store to config and create its symlinks",
+		Long: `Adds a new store entry to config. Use flags to set the target path,
+explicit files, and/or glob patterns for file-level symlinks.
+
+Without --target, the entry is saved to config but no symlinks are created.
+Without --files or --patterns, the entire directory is symlinked to the target.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAdd(args[0], addTarget, addFiles, addPatterns)
+		},
 	}
+	addCmd.Flags().StringVarP(&addTarget, "target", "t", "", "target path for the symlink")
+	addCmd.Flags().StringArrayVarP(&addFiles, "files", "f", nil, "explicit files to symlink (repeatable)")
+	addCmd.Flags().StringArrayVarP(&addPatterns, "patterns", "p", nil, "glob patterns to match files (repeatable, supports **)")
+
+	// --- modify command ---
+	var modTarget string
+	var modFiles []string
+	var modPatterns []string
+	var modClearFiles bool
+	var modClearPatterns bool
+
+	modifyCmd := &cobra.Command{
+		Use:   "modify <name>",
+		Short: "Modify an existing store entry",
+		Long: `Updates fields on an existing store entry. Each provided flag replaces
+the entire field. Use --clear-files or --clear-patterns to remove those fields.
+
+The old symlinks are removed before applying changes.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runModify(cmd, args[0], modTarget, modFiles, modPatterns, modClearFiles, modClearPatterns)
+		},
+	}
+	modifyCmd.Flags().StringVarP(&modTarget, "target", "t", "", "new target path")
+	modifyCmd.Flags().StringArrayVarP(&modFiles, "files", "f", nil, "replace file list (repeatable)")
+	modifyCmd.Flags().StringArrayVarP(&modPatterns, "patterns", "p", nil, "replace pattern list (repeatable)")
+	modifyCmd.Flags().BoolVar(&modClearFiles, "clear-files", false, "remove all files from the entry")
+	modifyCmd.Flags().BoolVar(&modClearPatterns, "clear-patterns", false, "remove all patterns from the entry")
 
 	removeCmd := &cobra.Command{
 		Use:   "remove <name>",
@@ -71,7 +108,7 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(initCmd, addCmd, removeCmd, removeAllCmd, statusCmd, versionCmd)
+	rootCmd.AddCommand(initCmd, addCmd, modifyCmd, removeCmd, removeAllCmd, statusCmd, versionCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -100,16 +137,23 @@ func runInit(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runAdd(cmd *cobra.Command, args []string) error {
-	name := args[0]
-
+func runAdd(name, target string, files, patterns []string) error {
 	root, err := config.FindRoot()
 	if err != nil {
 		return err
 	}
 
+	cfg, err := config.Load(root)
+	if err != nil {
+		return err
+	}
+
+	if _, exists := cfg.Stores[name]; exists {
+		return fmt.Errorf("store %q already exists (use 'store modify' to update it)", name)
+	}
+
 	// Ensure the store directory exists, creating it if needed.
-	storePath := root + "/" + name
+	storePath := filepath.Join(root, name)
 	fi, err := os.Stat(storePath)
 	if os.IsNotExist(err) {
 		if err := os.MkdirAll(storePath, 0o755); err != nil {
@@ -122,52 +166,119 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%q is not a directory", name)
 	}
 
-	// Prompt for target path.
-	fmt.Printf("Where should %q be symlinked to?\n", name)
-	fmt.Print("Target path: ")
-
-	reader := bufio.NewReader(os.Stdin)
-	target, err := reader.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("failed to read input: %w", err)
-	}
-	target = strings.TrimSpace(target)
-
-	if target == "" {
-		return fmt.Errorf("target path cannot be empty")
-	}
-
-	// Resolve to absolute path so the config is cwd-independent.
-	// Paths starting with ~ are kept as-is for portability.
-	expanded, err := config.ExpandHome(target)
-	if err != nil {
-		return err
-	}
-	if !filepath.IsAbs(expanded) {
-		target, err = filepath.Abs(target)
+	// Resolve target to absolute path; keep ~/... as-is for portability.
+	if target != "" {
+		expanded, err := config.ExpandHome(target)
 		if err != nil {
-			return fmt.Errorf("failed to resolve target path: %w", err)
+			return err
+		}
+		if !filepath.IsAbs(expanded) {
+			target, err = filepath.Abs(target)
+			if err != nil {
+				return fmt.Errorf("failed to resolve target path: %w", err)
+			}
 		}
 	}
 
-	// Load existing config (or create fresh if somehow missing).
+	entry := config.StoreEntry{
+		Target:   target,
+		Files:    files,
+		Patterns: patterns,
+	}
+
+	cfg.Stores[name] = entry
+	if err := config.Save(root, cfg); err != nil {
+		return err
+	}
+
+	// Create symlinks if a target is configured.
+	if target != "" {
+		if err := storeops.Store(root, name, entry); err != nil {
+			return err
+		}
+		if entry.HasFileMode() {
+			fmt.Printf("  %s -> %s (files)\n", name, target)
+		} else {
+			fmt.Printf("  %s -> %s\n", name, target)
+		}
+	} else {
+		fmt.Printf("Added %s to config (no target set)\n", name)
+	}
+
+	return nil
+}
+
+func runModify(cmd *cobra.Command, name, target string, files, patterns []string, clearFiles, clearPatterns bool) error {
+	root, err := config.FindRoot()
+	if err != nil {
+		return err
+	}
+
 	cfg, err := config.Load(root)
 	if err != nil {
 		return err
 	}
 
-	// Save the entry to config.
-	cfg.Stores[name] = config.StoreEntry{Target: target}
+	entry, ok := cfg.Stores[name]
+	if !ok {
+		return fmt.Errorf("store %q not found in config", name)
+	}
+
+	// Remove old symlinks before modifying.
+	if err := storeops.StoreRemove(root, name, entry); err != nil {
+		fmt.Printf("  warning: failed to remove old symlinks: %s\n", err)
+	}
+
+	// Apply modifications — each flag replaces the entire field.
+	if cmd.Flags().Changed("target") {
+		if target != "" {
+			expanded, err := config.ExpandHome(target)
+			if err != nil {
+				return err
+			}
+			if !filepath.IsAbs(expanded) {
+				target, err = filepath.Abs(target)
+				if err != nil {
+					return fmt.Errorf("failed to resolve target path: %w", err)
+				}
+			}
+		}
+		entry.Target = target
+	}
+
+	if cmd.Flags().Changed("files") {
+		entry.Files = files
+	}
+	if clearFiles {
+		entry.Files = nil
+	}
+
+	if cmd.Flags().Changed("patterns") {
+		entry.Patterns = patterns
+	}
+	if clearPatterns {
+		entry.Patterns = nil
+	}
+
+	cfg.Stores[name] = entry
 	if err := config.Save(root, cfg); err != nil {
 		return err
 	}
 
-	// Create the symlink.
-	if err := storeops.Store(root, name, cfg.Stores[name]); err != nil {
-		return err
+	// Re-create symlinks with updated config.
+	if entry.Target != "" {
+		if err := storeops.Store(root, name, entry); err != nil {
+			return err
+		}
+		if entry.HasFileMode() {
+			fmt.Printf("  %s -> %s (files)\n", name, entry.Target)
+		} else {
+			fmt.Printf("  %s -> %s\n", name, entry.Target)
+		}
+	} else {
+		fmt.Printf("Modified %s (no target set)\n", name)
 	}
 
-	fmt.Printf("  %s -> %s\n", name, target)
 	return nil
 }
 
@@ -276,8 +387,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("store %q not found in config", name)
 		}
 
-		info := storeops.GetStatus(root, name, entry)
-		printStatus(info)
+		infos := storeops.GetStatus(root, name, entry)
+		for _, info := range infos {
+			printStatus(info)
+		}
 		return nil
 	}
 
@@ -296,7 +409,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 func printStatus(info storeops.StatusInfo) {
 	if info.Error != nil {
-		fmt.Printf("  %-20s %s  (error: %s)\n", info.Name, info.Target, info.Error)
+		if info.File != "" {
+			fmt.Printf("  %-20s %-20s %s  (error: %s)\n", info.Name, info.File, info.Target, info.Error)
+		} else {
+			fmt.Printf("  %-20s %s  (error: %s)\n", info.Name, info.Target, info.Error)
+		}
 		return
 	}
 
@@ -312,5 +429,9 @@ func printStatus(info storeops.StatusInfo) {
 		indicator = "[broken]"
 	}
 
-	fmt.Printf("  %-20s %-10s %s\n", info.Name, indicator, info.Target)
+	if info.File != "" {
+		fmt.Printf("  %-20s %-20s %-10s %s\n", info.Name, info.File, indicator, info.Target)
+	} else {
+		fmt.Printf("  %-20s %-10s %s\n", info.Name, indicator, info.Target)
+	}
 }
