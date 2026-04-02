@@ -22,9 +22,13 @@ func Match(storeDir string, files []string, patterns []string) ([]string, error)
 
 	// Resolve explicit files first — no walking required.
 	for _, f := range files {
+		if f == "" {
+			continue
+		}
+
 		// Prevent path traversal outside the store directory.
 		clean := filepath.Clean(f)
-		if strings.HasPrefix(clean, "..") {
+		if clean == "." || strings.HasPrefix(clean, "..") {
 			return nil, fmt.Errorf("file path %q escapes store directory", f)
 		}
 
@@ -40,8 +44,12 @@ func Match(storeDir string, files []string, patterns []string) ([]string, error)
 
 	// Resolve patterns.
 	for _, pattern := range patterns {
+		if pattern == "" {
+			continue
+		}
+
 		clean := filepath.Clean(pattern)
-		if strings.HasPrefix(clean, "..") {
+		if clean == "." || strings.HasPrefix(clean, "..") {
 			return nil, fmt.Errorf("pattern %q escapes store directory", pattern)
 		}
 

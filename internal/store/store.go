@@ -2,7 +2,9 @@ package store
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/cush/store/internal/config"
 	"github.com/cush/store/internal/linker"
@@ -126,7 +128,53 @@ func StoreRemove(root string, name string, entry config.StoreEntry) error {
 		return fmt.Errorf("store %q: %d file(s) failed to unlink", name, len(errors))
 	}
 
+	// Clean up empty parent directories that were created under the target
+	// during file-mode linking (via MkdirAll). Walk deepest paths first so
+	// nested dirs are removed before their parents.
+	cleanupEmptyDirs(target, files)
+
 	return nil
+}
+
+// cleanupEmptyDirs removes empty directories under target that were created as
+// parents of file-mode symlinks. It processes paths deepest-first and only
+// removes directories that are empty, so it is always safe to call.
+func cleanupEmptyDirs(target string, relPaths []string) {
+	// Collect unique parent directories, deepest first.
+	dirs := make(map[string]struct{})
+	for _, rel := range relPaths {
+		dir := filepath.Dir(rel)
+		for dir != "." && dir != "" {
+			dirs[dir] = struct{}{}
+			dir = filepath.Dir(dir)
+		}
+	}
+
+	// Sort descending by depth so we remove children before parents.
+	sorted := make([]string, 0, len(dirs))
+	for d := range dirs {
+		sorted = append(sorted, d)
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		// More path separators = deeper; break ties lexicographically reversed.
+		di := len(filepath.SplitList(sorted[i]))
+		dj := len(filepath.SplitList(sorted[j]))
+		if di != dj {
+			return di > dj
+		}
+		return sorted[i] > sorted[j]
+	})
+
+	for _, dir := range sorted {
+		full := filepath.Join(target, dir)
+		// os.Remove only removes empty directories, so this is safe.
+		os.Remove(full)
+	}
+
+	// Finally, try to remove the target directory itself if it is now empty.
+	// os.Remove fails on non-empty directories, so this is safe — it will
+	// not remove directories like ~ that still contain other files.
+	os.Remove(target)
 }
 
 // StoreRemoveAll removes symlinks for all stores in the config.
