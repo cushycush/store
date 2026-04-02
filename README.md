@@ -25,7 +25,8 @@ Your dotfiles repo might look like this:
 
 ```
 ~/.config/nvim  ->  ~/dotfiles/nvim
-~/.zsh          ->  ~/dotfiles/zsh
+~/.zshrc        ->  ~/dotfiles/zsh/.zshrc
+~/.zshenv       ->  ~/dotfiles/zsh/.zshenv
 ~/.config/git   ->  ~/dotfiles/git
 ```
 
@@ -38,7 +39,7 @@ All configuration lives in a single `.store/config.yaml` file that you commit al
 | **Directory structure** | Must mirror the target filesystem hierarchy | Flat -- each store is a top-level directory |
 | **Target paths** | Inferred from directory structure and stow directory location | Explicitly declared per store in YAML config |
 | **Configuration** | Convention-based (directory layout is the config) | Single `config.yaml` file |
-| **Granularity** | Symlinks individual files within directories | Symlinks whole directories |
+| **Granularity** | Symlinks individual files within directories | Symlinks whole directories or individual files via patterns |
 | **Setup on new machine** | Run `stow` per package from the correct parent directory | Run `store` from anywhere in the repo |
 
 ## Installation
@@ -69,31 +70,40 @@ git init
 store init
 ```
 
-2. Add a store for your Neovim config:
+2. Add a store for your Neovim config (whole-directory symlink):
 
 ```sh
-store add nvim
-# When prompted, enter the target path: ~/.config/nvim
+store add nvim -t ~/.config/nvim
 ```
 
 This creates the `nvim/` directory, saves the target to `.store/config.yaml`, and creates the symlink.
 
-3. Move your existing config files into the store directory:
+3. Add a store with file-level symlinks for files that live in `~`:
+
+```sh
+store add zsh -t ~ -f .zshrc -f .zshenv
+```
+
+This creates individual symlinks: `~/.zshrc -> ~/dotfiles/zsh/.zshrc` and `~/.zshenv -> ~/dotfiles/zsh/.zshenv`.
+
+4. Move your existing config files into the store directories:
 
 ```sh
 mv ~/.config/nvim/init.lua ~/dotfiles/nvim/
+mv ~/.zshrc ~/dotfiles/zsh/
+mv ~/.zshenv ~/dotfiles/zsh/
 ```
 
-Since the symlink points `~/.config/nvim` to `~/dotfiles/nvim`, your editor picks up the files from the repo directory.
+Since the symlinks point back to the repo directories, your tools pick up the files seamlessly.
 
-4. Commit and push:
+5. Commit and push:
 
 ```sh
-git add -A && git commit -m "add nvim config"
+git add -A && git commit -m "add configs"
 git push
 ```
 
-5. On a new machine, clone and restore all symlinks:
+6. On a new machine, clone and restore all symlinks:
 
 ```sh
 git clone https://github.com/you/dotfiles.git ~/dotfiles
@@ -113,7 +123,7 @@ Creates or restores symlinks for all stores in the config. This is the command y
 $ store
 Storing all stores:
   nvim -> ~/.config/nvim
-  zsh -> ~/.zsh
+  zsh -> ~ (files)
   git -> ~/.config/git
 ```
 
@@ -132,28 +142,80 @@ Run this once at the root of your dotfiles repo.
 
 ### `store add <name>`
 
-Adds a new store. Creates the directory if it doesn't exist, prompts for the target path, saves the entry to config, and creates the symlink.
+Adds a new store. Creates the directory if it doesn't exist, saves the entry to config, and creates symlinks if a target is provided.
 
 ```sh
-$ store add nvim
-Created directory /home/user/dotfiles/nvim
-Where should "nvim" be symlinked to?
-Target path: ~/.config/nvim
+# Whole-directory symlink
+$ store add nvim -t ~/.config/nvim
   nvim -> ~/.config/nvim
+
+# File-level symlinks with explicit files
+$ store add zsh -t ~ -f .zshrc -f .zshenv
+  zsh -> ~ (files)
+
+# File-level symlinks with glob patterns
+$ store add shell -t ~ -p ".zsh*" -p ".bash*"
+  shell -> ~ (files)
+
+# Recursive glob patterns
+$ store add configs -t ~/.config -p "**/*.conf"
+  configs -> ~/.config (files)
+
+# Add to config without a target (configure later with modify)
+$ store add zsh
+Added zsh to config (no target set)
 ```
 
-Target paths can use `~` for the home directory or absolute paths. Relative paths are automatically resolved to absolute paths before saving.
+**Flags:**
+
+| Flag | Short | Description |
+|---|---|---|
+| `--target` | `-t` | Target path for the symlink |
+| `--files` | `-f` | Explicit files to symlink (repeatable) |
+| `--patterns` | `-p` | Glob patterns to match files (repeatable, supports `**`) |
+
+Target paths can use `~` for the home directory or absolute paths. Relative paths are automatically resolved to absolute paths.
+
+### `store modify <name>`
+
+Updates fields on an existing store entry. Each flag replaces the entire field.
+
+```sh
+# Change target path
+$ store modify nvim -t ~/.config/nvim-custom
+
+# Replace the file list
+$ store modify zsh -f .zshrc -f .zshenv -f .zprofile
+
+# Switch from files to patterns
+$ store modify zsh --clear-files -p ".zsh*"
+
+# Remove patterns (reverts to whole-directory symlink)
+$ store modify zsh --clear-patterns
+```
+
+Old symlinks are removed before the updated entry is applied.
+
+**Flags:**
+
+| Flag | Short | Description |
+|---|---|---|
+| `--target` | `-t` | New target path |
+| `--files` | `-f` | Replace file list (repeatable) |
+| `--patterns` | `-p` | Replace pattern list (repeatable) |
+| `--clear-files` | | Remove all files from the entry |
+| `--clear-patterns` | | Remove all patterns from the entry |
 
 ### `store remove <name>`
 
-Removes the symlink for the named store and deletes its config entry.
+Removes the symlink(s) for the named store and deletes its config entry.
 
 ```sh
 $ store remove nvim
 Removed store nvim (~/.config/nvim)
 ```
 
-The store directory and its contents in your repo are not deleted -- only the symlink and config entry are removed.
+The store directory and its contents in your repo are not deleted -- only the symlinks and config entry are removed.
 
 ### `store removeall`
 
@@ -163,7 +225,7 @@ Removes symlinks and config entries for all stores. If a particular store fails 
 $ store removeall
 Removing all stores:
   removed nvim (~/.config/nvim)
-  removed zsh (~/.zsh)
+  removed zsh (~)
   removed git (~/.config/git)
 ```
 
@@ -191,12 +253,13 @@ make build VERSION=0.1.0
 
 ### `store status [name]`
 
-Shows the symlink status for one or all stores.
+Shows the symlink status for one or all stores. For file-mode stores, each file is shown individually.
 
 ```sh
 $ store status
   nvim                 [linked]   ~/.config/nvim
-  zsh                  [missing]  ~/.zsh
+  zsh                  .zshrc               [linked]   ~/.zshrc
+  zsh                  .zshenv              [linked]   ~/.zshenv
   git                  [conflict] ~/.config/git
 ```
 
@@ -214,25 +277,63 @@ stores:
     nvim:
         target: ~/.config/nvim
     zsh:
-        target: ~/.zsh
+        target: ~
+        files:
+            - .zshrc
+            - .zshenv
+    shell:
+        target: ~
+        patterns:
+            - ".zsh*"
+            - ".bash*"
+    configs:
+        target: ~/.config
+        patterns:
+            - "**/*.conf"
     git:
         target: ~/.config/git
 ```
 
-Each entry maps a store name (a directory in your repo) to a target path (where the symlink is created).
+Each entry maps a store name (a directory in your repo) to a target path (where symlinks are created).
 
-**Supported target path formats:**
+### Entry Fields
+
+| Field | Required | Description |
+|---|---|---|
+| `target` | No | Where symlinks are created. Without a target, the entry is saved but no symlinks are created. |
+| `files` | No | Explicit list of files to symlink individually. |
+| `patterns` | No | Glob patterns to match files. Supports `*`, `?`, `[...]`, and `**` for recursive matching. |
+
+**Behavior:**
+
+- **No `files` or `patterns`:** The entire store directory is symlinked to the target (whole-directory mode).
+- **`files` and/or `patterns` specified:** Only matched files are symlinked individually. Directory structure is preserved at the target.
+- **Both `files` and `patterns`:** Results are combined and deduplicated.
+
+### Pattern Syntax
+
+Patterns use standard glob syntax with recursive matching support:
+
+| Pattern | Matches |
+|---|---|
+| `.zsh*` | `.zshrc`, `.zshenv`, etc. at the top level |
+| `*.conf` | All `.conf` files at the top level |
+| `**/*.conf` | All `.conf` files at any depth |
+| `config/*.lua` | `.lua` files inside `config/` |
+| `**/*.{lua,vim}` | `.lua` and `.vim` files at any depth |
+
+### Target Path Formats
 
 - `~` prefix -- expanded to the user's home directory (e.g., `~/.config/nvim`). Portable across machines.
 - Absolute paths -- used as-is (e.g., `/home/user/.config/nvim`).
 
-Relative paths entered during `store add` are automatically converted to absolute paths.
+Relative paths provided via `--target` are automatically converted to absolute paths.
 
 ## Status Indicators
 
 | Status | Meaning |
 |---|---|
-| `[linked]` | Symlink exists and points to the correct store directory. |
+| `[linked]` | Symlink exists and points to the correct store directory or file. |
 | `[missing]` | No symlink exists at the target path. Run `store` to create it. |
 | `[conflict]` | Something exists at the target path but it is not a symlink managed by store. Resolve manually. |
 | `[broken]` | A symlink exists but its destination no longer exists. Running `store` will replace it. |
@@ -243,6 +344,7 @@ Relative paths entered during `store add` are automatically converted to absolut
 - **Symlinks are absolute:** When creating symlinks, source paths are resolved to absolute paths. This means symlinks work regardless of your working directory.
 - **Conflict detection:** Before creating or removing a symlink, `store` checks the target path. It refuses to overwrite files or directories that aren't managed by store, preventing accidental data loss.
 - **Broken symlink recovery:** If a symlink exists but points to a nonexistent path, `store` removes it and creates a fresh one pointing to the correct source.
+- **File matching performance:** Explicit `files` entries are validated with a single stat call each (no directory walking). Simple glob patterns use `Glob` without recursive traversal. Only `**` patterns trigger a full directory walk, using the efficient `WalkDir` API.
 
 ## Troubleshooting
 
