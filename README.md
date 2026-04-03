@@ -1,4 +1,4 @@
-# store
+![store logo](https://res.cloudinary.com/cush/image/upload/v1775189496/screenshot-2026-04-02_22-10-09_y9sbug.png)
 
 A simpler alternative to [GNU Stow](https://www.gnu.org/software/stow/) for managing dotfile symlinks.
 
