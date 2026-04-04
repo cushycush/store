@@ -103,14 +103,15 @@ store target add shells -t ~/.config/nushell -f config.nu
 
 Now the `shells` store deploys to three different locations from a single directory.
 
-5. Move your existing config files into the store directories:
+5. If files already existed at the target paths when you ran `store add`, store detected them and offered to move them into the store directories for you:
 
-```sh
-mv ~/.config/nvim/init.lua ~/dotfiles/nvim/
-mv ~/.zshrc ~/dotfiles/shells/
-mv ~/.bashrc ~/dotfiles/shells/
-mv ~/.config/fish/config.fish ~/dotfiles/shells/
-mv ~/.config/nushell/config.nu ~/dotfiles/shells/
+```
+The following files conflict with store symlinks:
+  ~/.config/nvim (directory -> will be moved to ~/dotfiles/nvim)
+  ~/.zshrc (file -> will be moved to ~/dotfiles/shells/.zshrc)
+  ~/.bashrc (file -> will be moved to ~/dotfiles/shells/.bashrc)
+
+Move these files into the store and create symlinks? [y/N] y
 ```
 
 Since the symlinks point back to the repo directories, your tools pick up the files seamlessly.
