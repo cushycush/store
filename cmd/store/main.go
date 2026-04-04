@@ -470,7 +470,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// resolveTargetPath normalizes a target path: expands ~, resolves relative to absolute.
+// resolveTargetPath normalizes a target path for storage: expands ~ prefix,
+// resolves relative paths to absolute. Tilde-prefixed paths are kept as-is
+// for portability across machines.
 func resolveTargetPath(target string) (string, error) {
 	expanded, err := config.ExpandHome(target)
 	if err != nil {
@@ -483,6 +485,21 @@ func resolveTargetPath(target string) (string, error) {
 		}
 	}
 	return target, nil
+}
+
+// expandTargetPath fully expands a target path to an absolute path for comparison.
+func expandTargetPath(target string) (string, error) {
+	expanded, err := config.ExpandHome(target)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(expanded) {
+		expanded, err = filepath.Abs(expanded)
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve target path: %w", err)
+		}
+	}
+	return expanded, nil
 }
 
 func runTargetAdd(name, target string, files, patterns []string) error {
@@ -507,9 +524,17 @@ func runTargetAdd(name, target string, files, patterns []string) error {
 	}
 
 	// Check for duplicate target path.
+	expandedTarget, err := expandTargetPath(target)
+	if err != nil {
+		return err
+	}
 	for _, te := range entry.ResolvedTargets() {
-		if te.Target == target {
-			return fmt.Errorf("store %q already has a target %q", name, target)
+		expandedExisting, err := expandTargetPath(te.Target)
+		if err != nil {
+			return err
+		}
+		if expandedExisting == expandedTarget {
+			return fmt.Errorf("store %q already has a target %q", name, te.Target)
 		}
 	}
 
@@ -557,7 +582,7 @@ func runTargetRemove(name, target string) error {
 		return fmt.Errorf("store %q not found in config", name)
 	}
 
-	target, err = resolveTargetPath(target)
+	expandedTarget, err := expandTargetPath(target)
 	if err != nil {
 		return err
 	}
@@ -568,7 +593,11 @@ func runTargetRemove(name, target string) error {
 	// Find and remove the target.
 	found := -1
 	for i, te := range entry.Targets {
-		if te.Target == target {
+		expandedExisting, err := expandTargetPath(te.Target)
+		if err != nil {
+			return err
+		}
+		if expandedExisting == expandedTarget {
 			found = i
 			break
 		}
@@ -620,7 +649,7 @@ func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []
 		return fmt.Errorf("store %q not found in config", name)
 	}
 
-	target, err = resolveTargetPath(target)
+	expandedTarget, err := expandTargetPath(target)
 	if err != nil {
 		return err
 	}
@@ -630,7 +659,11 @@ func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []
 
 	found := -1
 	for i, te := range entry.Targets {
-		if te.Target == target {
+		expandedExisting, err := expandTargetPath(te.Target)
+		if err != nil {
+			return err
+		}
+		if expandedExisting == expandedTarget {
 			found = i
 			break
 		}
