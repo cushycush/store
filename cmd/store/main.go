@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -253,7 +255,7 @@ func runAdd(name, target string, files, patterns []string) error {
 
 	// Create symlinks if a target is configured.
 	if target != "" {
-		if err := storeops.Store(root, name, entry); err != nil {
+		if err := storeWithConflictResolution(root, name, entry); err != nil {
 			return err
 		}
 		if entry.HasFileMode() {
@@ -325,7 +327,7 @@ func runModify(cmd *cobra.Command, name, target string, files, patterns []string
 
 	// Re-create symlinks with updated config.
 	if entry.Target != "" {
-		if err := storeops.Store(root, name, entry); err != nil {
+		if err := storeWithConflictResolution(root, name, entry); err != nil {
 			return err
 		}
 		if entry.HasFileMode() {
@@ -352,7 +354,7 @@ func runStoreAll(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println("Storing all stores:")
-	return storeops.StoreAll(root, cfg)
+	return storeAllWithConflictResolution(root, cfg)
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
@@ -554,7 +556,7 @@ func runTargetAdd(name, target string, files, patterns []string) error {
 	}
 
 	// Create symlinks for the new target.
-	if err := storeops.StoreTarget(root, name, newTarget); err != nil {
+	if err := storeTargetWithConflictResolution(root, name, newTarget); err != nil {
 		return err
 	}
 
@@ -702,7 +704,7 @@ func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []
 	// Re-resolve from entry in case we migrated back.
 	for _, resolved := range entry.ResolvedTargets() {
 		if resolved.Target == target {
-			if err := storeops.StoreTarget(root, name, resolved); err != nil {
+			if err := storeTargetWithConflictResolution(root, name, resolved); err != nil {
 				return err
 			}
 			if resolved.HasFileMode() {
@@ -714,6 +716,105 @@ func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []
 		}
 	}
 	return nil
+}
+
+// promptYesNo prints a prompt and reads a y/N response from stdin. Default is no.
+func promptYesNo(prompt string) bool {
+	fmt.Printf("%s [y/N] ", prompt)
+	reader := bufio.NewReader(os.Stdin)
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	return answer == "y" || answer == "yes"
+}
+
+// printConflicts lists conflicts and what will happen to each file.
+func printConflicts(conflicts []storeops.ConflictInfo) {
+	fmt.Println("The following files conflict with store symlinks:")
+	for _, c := range conflicts {
+		kind := "file"
+		if c.IsDir {
+			kind = "directory"
+		}
+		fmt.Printf("  %s (%s -> will be moved to %s)\n", c.Target, kind, c.Source)
+	}
+}
+
+// storeWithConflictResolution checks for conflicts, prompts the user to resolve
+// them, then creates symlinks for all targets in the entry.
+func storeWithConflictResolution(root, name string, entry config.StoreEntry) error {
+	conflicts, err := storeops.CollectConflicts(root, name, entry)
+	if err != nil {
+		return err
+	}
+
+	if len(conflicts) > 0 {
+		printConflicts(conflicts)
+		fmt.Println()
+		if !promptYesNo("Move these files into the store and create symlinks?") {
+			return fmt.Errorf("aborted due to unresolved conflicts")
+		}
+		if err := storeops.ResolveConflicts(conflicts); err != nil {
+			return err
+		}
+		fmt.Println()
+	}
+
+	return storeops.Store(root, name, entry)
+}
+
+// storeTargetWithConflictResolution checks for conflicts on a single target,
+// prompts the user, resolves them, then creates symlinks.
+func storeTargetWithConflictResolution(root, name string, te config.TargetEntry) error {
+	conflicts, err := storeops.CollectTargetConflicts(root, name, te)
+	if err != nil {
+		return err
+	}
+
+	if len(conflicts) > 0 {
+		printConflicts(conflicts)
+		fmt.Println()
+		if !promptYesNo("Move these files into the store and create symlinks?") {
+			return fmt.Errorf("aborted due to unresolved conflicts")
+		}
+		if err := storeops.ResolveConflicts(conflicts); err != nil {
+			return err
+		}
+		fmt.Println()
+	}
+
+	return storeops.StoreTarget(root, name, te)
+}
+
+// storeAllWithConflictResolution checks for conflicts across all stores,
+// prompts once, resolves, then creates all symlinks.
+func storeAllWithConflictResolution(root string, cfg *config.Config) error {
+	if len(cfg.Stores) == 0 {
+		return fmt.Errorf("no stores defined in config")
+	}
+
+	// Collect conflicts across all stores.
+	var allConflicts []storeops.ConflictInfo
+	for name, entry := range cfg.Stores {
+		conflicts, err := storeops.CollectConflicts(root, name, entry)
+		if err != nil {
+			return err
+		}
+		allConflicts = append(allConflicts, conflicts...)
+	}
+
+	if len(allConflicts) > 0 {
+		printConflicts(allConflicts)
+		fmt.Println()
+		if !promptYesNo("Move these files into the store and create symlinks?") {
+			return fmt.Errorf("aborted due to unresolved conflicts")
+		}
+		if err := storeops.ResolveConflicts(allConflicts); err != nil {
+			return err
+		}
+		fmt.Println()
+	}
+
+	return storeops.StoreAll(root, cfg)
 }
 
 func printStatus(info storeops.StatusInfo) {
