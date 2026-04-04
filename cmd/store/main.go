@@ -108,7 +108,73 @@ The old symlinks are removed before applying changes.`,
 		},
 	}
 
-	rootCmd.AddCommand(initCmd, addCmd, modifyCmd, removeCmd, removeAllCmd, statusCmd, versionCmd)
+	// --- target command group ---
+	targetCmd := &cobra.Command{
+		Use:   "target",
+		Short: "Manage individual targets within a store",
+		Long:  "Add, remove, or modify individual targets within a multi-target store.",
+	}
+
+	var targetAddTarget string
+	var targetAddFiles []string
+	var targetAddPatterns []string
+
+	targetAddCmd := &cobra.Command{
+		Use:   "add <name>",
+		Short: "Add a target to a store",
+		Long: `Adds a new target entry to an existing store. If the store currently uses
+the single-target format, it is automatically migrated to the multi-target format.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runTargetAdd(args[0], targetAddTarget, targetAddFiles, targetAddPatterns)
+		},
+	}
+	targetAddCmd.Flags().StringVarP(&targetAddTarget, "target", "t", "", "target path for the symlink (required)")
+	targetAddCmd.MarkFlagRequired("target")
+	targetAddCmd.Flags().StringArrayVarP(&targetAddFiles, "files", "f", nil, "explicit files to symlink (repeatable)")
+	targetAddCmd.Flags().StringArrayVarP(&targetAddPatterns, "patterns", "p", nil, "glob patterns to match files (repeatable, supports **)")
+
+	var targetRemoveTarget string
+
+	targetRemoveCmd := &cobra.Command{
+		Use:   "remove <name>",
+		Short: "Remove a target from a store",
+		Long:  "Removes a specific target (by path) from a store and unlinks its symlinks.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runTargetRemove(args[0], targetRemoveTarget)
+		},
+	}
+	targetRemoveCmd.Flags().StringVarP(&targetRemoveTarget, "target", "t", "", "target path to remove (required)")
+	targetRemoveCmd.MarkFlagRequired("target")
+
+	var targetModTarget string
+	var targetModFiles []string
+	var targetModPatterns []string
+	var targetModClearFiles bool
+	var targetModClearPatterns bool
+
+	targetModifyCmd := &cobra.Command{
+		Use:   "modify <name>",
+		Short: "Modify a target within a store",
+		Long: `Modifies the files or patterns for a specific target within a store.
+The target is identified by its path (-t flag). Each provided flag replaces
+the entire field. Use --clear-files or --clear-patterns to remove those fields.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runTargetModify(cmd, args[0], targetModTarget, targetModFiles, targetModPatterns, targetModClearFiles, targetModClearPatterns)
+		},
+	}
+	targetModifyCmd.Flags().StringVarP(&targetModTarget, "target", "t", "", "target path to modify (required)")
+	targetModifyCmd.MarkFlagRequired("target")
+	targetModifyCmd.Flags().StringArrayVarP(&targetModFiles, "files", "f", nil, "replace file list (repeatable)")
+	targetModifyCmd.Flags().StringArrayVarP(&targetModPatterns, "patterns", "p", nil, "replace pattern list (repeatable)")
+	targetModifyCmd.Flags().BoolVar(&targetModClearFiles, "clear-files", false, "remove all files from the target")
+	targetModifyCmd.Flags().BoolVar(&targetModClearPatterns, "clear-patterns", false, "remove all patterns from the target")
+
+	targetCmd.AddCommand(targetAddCmd, targetRemoveCmd, targetModifyCmd)
+
+	rootCmd.AddCommand(initCmd, addCmd, modifyCmd, removeCmd, removeAllCmd, statusCmd, versionCmd, targetCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -168,15 +234,9 @@ func runAdd(name, target string, files, patterns []string) error {
 
 	// Resolve target to absolute path; keep ~/... as-is for portability.
 	if target != "" {
-		expanded, err := config.ExpandHome(target)
+		target, err = resolveTargetPath(target)
 		if err != nil {
 			return err
-		}
-		if !filepath.IsAbs(expanded) {
-			target, err = filepath.Abs(target)
-			if err != nil {
-				return fmt.Errorf("failed to resolve target path: %w", err)
-			}
 		}
 	}
 
@@ -224,6 +284,10 @@ func runModify(cmd *cobra.Command, name, target string, files, patterns []string
 		return fmt.Errorf("store %q not found in config", name)
 	}
 
+	if entry.IsMultiTarget() {
+		return fmt.Errorf("store %q uses multiple targets; use 'store target modify' instead", name)
+	}
+
 	// Remove old symlinks before modifying.
 	if err := storeops.StoreRemove(root, name, entry); err != nil {
 		fmt.Printf("  warning: failed to remove old symlinks: %s\n", err)
@@ -232,15 +296,9 @@ func runModify(cmd *cobra.Command, name, target string, files, patterns []string
 	// Apply modifications — each flag replaces the entire field.
 	if cmd.Flags().Changed("target") {
 		if target != "" {
-			expanded, err := config.ExpandHome(target)
+			target, err = resolveTargetPath(target)
 			if err != nil {
 				return err
-			}
-			if !filepath.IsAbs(expanded) {
-				target, err = filepath.Abs(target)
-				if err != nil {
-					return fmt.Errorf("failed to resolve target path: %w", err)
-				}
 			}
 		}
 		entry.Target = target
@@ -324,7 +382,12 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to remove config entry: %w", err)
 	}
 
-	fmt.Printf("Removed store %s (%s)\n", name, entry.Target)
+	targets := entry.ResolvedTargets()
+	if len(targets) == 1 {
+		fmt.Printf("Removed store %s (%s)\n", name, targets[0].Target)
+	} else {
+		fmt.Printf("Removed store %s (%d targets)\n", name, len(targets))
+	}
 	return nil
 }
 
@@ -403,6 +466,252 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	results := storeops.GetStatusAll(root, cfg)
 	for _, info := range results {
 		printStatus(info)
+	}
+	return nil
+}
+
+// resolveTargetPath normalizes a target path for storage: expands ~ prefix,
+// resolves relative paths to absolute. Tilde-prefixed paths are kept as-is
+// for portability across machines.
+func resolveTargetPath(target string) (string, error) {
+	expanded, err := config.ExpandHome(target)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(expanded) {
+		target, err = filepath.Abs(target)
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve target path: %w", err)
+		}
+	}
+	return target, nil
+}
+
+// expandTargetPath fully expands a target path to an absolute path for comparison.
+func expandTargetPath(target string) (string, error) {
+	expanded, err := config.ExpandHome(target)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(expanded) {
+		expanded, err = filepath.Abs(expanded)
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve target path: %w", err)
+		}
+	}
+	return expanded, nil
+}
+
+func runTargetAdd(name, target string, files, patterns []string) error {
+	root, err := config.FindRoot()
+	if err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(root)
+	if err != nil {
+		return err
+	}
+
+	entry, ok := cfg.Stores[name]
+	if !ok {
+		return fmt.Errorf("store %q not found in config (use 'store add' to create it first)", name)
+	}
+
+	target, err = resolveTargetPath(target)
+	if err != nil {
+		return err
+	}
+
+	// Check for duplicate target path.
+	expandedTarget, err := expandTargetPath(target)
+	if err != nil {
+		return err
+	}
+	for _, te := range entry.ResolvedTargets() {
+		expandedExisting, err := expandTargetPath(te.Target)
+		if err != nil {
+			return err
+		}
+		if expandedExisting == expandedTarget {
+			return fmt.Errorf("store %q already has a target %q", name, te.Target)
+		}
+	}
+
+	// Migrate to multi-target format if currently single-target.
+	entry.MigrateToMultiTarget()
+
+	newTarget := config.TargetEntry{
+		Target:   target,
+		Files:    files,
+		Patterns: patterns,
+	}
+	entry.Targets = append(entry.Targets, newTarget)
+
+	cfg.Stores[name] = entry
+	if err := config.Save(root, cfg); err != nil {
+		return err
+	}
+
+	// Create symlinks for the new target.
+	if err := storeops.StoreTarget(root, name, newTarget); err != nil {
+		return err
+	}
+
+	if newTarget.HasFileMode() {
+		fmt.Printf("  %s -> %s (files)\n", name, target)
+	} else {
+		fmt.Printf("  %s -> %s\n", name, target)
+	}
+	return nil
+}
+
+func runTargetRemove(name, target string) error {
+	root, err := config.FindRoot()
+	if err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(root)
+	if err != nil {
+		return err
+	}
+
+	entry, ok := cfg.Stores[name]
+	if !ok {
+		return fmt.Errorf("store %q not found in config", name)
+	}
+
+	expandedTarget, err := expandTargetPath(target)
+	if err != nil {
+		return err
+	}
+
+	// Migrate to multi-target so we can work with the Targets slice.
+	entry.MigrateToMultiTarget()
+
+	// Find and remove the target.
+	found := -1
+	for i, te := range entry.Targets {
+		expandedExisting, err := expandTargetPath(te.Target)
+		if err != nil {
+			return err
+		}
+		if expandedExisting == expandedTarget {
+			found = i
+			break
+		}
+	}
+	if found == -1 {
+		return fmt.Errorf("store %q has no target %q", name, target)
+	}
+
+	// Unlink the target being removed.
+	if err := storeops.StoreRemoveTarget(root, name, entry.Targets[found]); err != nil {
+		fmt.Printf("  warning: failed to remove symlinks: %s\n", err)
+	}
+
+	entry.Targets = append(entry.Targets[:found], entry.Targets[found+1:]...)
+
+	if len(entry.Targets) == 0 {
+		// No targets left — clear everything.
+		entry.Target = ""
+		entry.Files = nil
+		entry.Patterns = nil
+		entry.Targets = nil
+	} else {
+		// Migrate back to single-target if only one remains.
+		entry.MigrateToSingleTarget()
+	}
+
+	cfg.Stores[name] = entry
+	if err := config.Save(root, cfg); err != nil {
+		return err
+	}
+
+	fmt.Printf("  removed target %s from %s\n", target, name)
+	return nil
+}
+
+func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []string, clearFiles, clearPatterns bool) error {
+	root, err := config.FindRoot()
+	if err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(root)
+	if err != nil {
+		return err
+	}
+
+	entry, ok := cfg.Stores[name]
+	if !ok {
+		return fmt.Errorf("store %q not found in config", name)
+	}
+
+	expandedTarget, err := expandTargetPath(target)
+	if err != nil {
+		return err
+	}
+
+	// Migrate to multi-target so we can index into Targets.
+	entry.MigrateToMultiTarget()
+
+	found := -1
+	for i, te := range entry.Targets {
+		expandedExisting, err := expandTargetPath(te.Target)
+		if err != nil {
+			return err
+		}
+		if expandedExisting == expandedTarget {
+			found = i
+			break
+		}
+	}
+	if found == -1 {
+		return fmt.Errorf("store %q has no target %q", name, target)
+	}
+
+	// Unlink old symlinks for this target.
+	if err := storeops.StoreRemoveTarget(root, name, entry.Targets[found]); err != nil {
+		fmt.Printf("  warning: failed to remove old symlinks: %s\n", err)
+	}
+
+	te := &entry.Targets[found]
+	if cmd.Flags().Changed("files") {
+		te.Files = files
+	}
+	if clearFiles {
+		te.Files = nil
+	}
+	if cmd.Flags().Changed("patterns") {
+		te.Patterns = patterns
+	}
+	if clearPatterns {
+		te.Patterns = nil
+	}
+
+	// Migrate back to single-target if applicable.
+	entry.MigrateToSingleTarget()
+
+	cfg.Stores[name] = entry
+	if err := config.Save(root, cfg); err != nil {
+		return err
+	}
+
+	// Re-resolve from entry in case we migrated back.
+	for _, resolved := range entry.ResolvedTargets() {
+		if resolved.Target == target {
+			if err := storeops.StoreTarget(root, name, resolved); err != nil {
+				return err
+			}
+			if resolved.HasFileMode() {
+				fmt.Printf("  %s -> %s (files)\n", name, target)
+			} else {
+				fmt.Printf("  %s -> %s\n", name, target)
+			}
+			break
+		}
 	}
 	return nil
 }
