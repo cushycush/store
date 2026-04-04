@@ -1,4 +1,4 @@
-VERSION ?= v0.2.0
+VERSION ?= v0.3.0
 
 build:
 	go build -ldflags "-X main.version=$(VERSION)" -o store ./cmd/store
