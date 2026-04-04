@@ -62,7 +62,7 @@ go install github.com/cush/store/cmd/store@latest
 ```sh
 git clone https://github.com/cush/store.git
 cd store
-make build VERSION=0.3.0
+make build VERSION=0.4.0
 # Move the binary somewhere in your PATH
 mv store /usr/local/bin/
 ```
@@ -320,20 +320,20 @@ Prints the current version.
 
 ```sh
 $ store version
-store version 0.3.0
+store version 0.4.0
 ```
 
 The `--version` flag also works:
 
 ```sh
 $ store --version
-store version 0.3.0
+store version 0.4.0
 ```
 
 When built without a version (e.g., `go build ./cmd/store`), the version defaults to `dev`. Use the Makefile to build with a specific version:
 
 ```sh
-make build VERSION=0.3.0
+make build VERSION=0.4.0
 ```
 
 ### `store status [name]`
@@ -456,29 +456,36 @@ Relative paths provided via `--target` are automatically converted to absolute p
 |---|---|
 | `[linked]` | Symlink exists and points to the correct store directory or file. |
 | `[missing]` | No symlink exists at the target path. Run `store` to create it. |
-| `[conflict]` | Something exists at the target path but it is not a symlink managed by store. Resolve manually. |
+| `[conflict]` | Something exists at the target path but it is not a symlink managed by store. Running `store` will offer to move it into the store directory. |
 | `[broken]` | A symlink exists but its destination no longer exists. Running `store` will replace it. |
 
 ## How It Works
 
 - **Root discovery:** Commands can be run from any subdirectory. `store` walks up the directory tree to find the nearest `.store/` directory, similar to how `git` finds `.git/`.
 - **Symlinks are absolute:** When creating symlinks, source paths are resolved to absolute paths. This means symlinks work regardless of your working directory.
-- **Conflict detection:** Before creating or removing a symlink, `store` checks the target path. It refuses to overwrite files or directories that aren't managed by store, preventing accidental data loss.
+- **Conflict resolution:** Before creating symlinks, `store` checks all target paths for conflicts. If files or directories already exist that aren't managed by store, it lists them and offers to move them into the store directory automatically. If a file already exists in the store directory, it is backed up with a `.bak` suffix before the move. For directory conflicts, the contents are merged into the store directory.
 - **Broken symlink recovery:** If a symlink exists but points to a nonexistent path, `store` removes it and creates a fresh one pointing to the correct source.
 - **File matching performance:** Explicit `files` entries are validated with a single stat call each (no directory walking). Simple glob patterns use `Glob` without recursive traversal. Only `**` patterns trigger a full directory walk, using the efficient `WalkDir` API.
 
 ## Troubleshooting
 
-### "conflict: already exists and is not a symlink managed by store"
+### Conflicts: files already exist at the target path
 
-Something (a file or directory) already exists at the target path and wasn't created by `store`. Move or remove it manually, then run `store` again.
+When files or directories already exist where `store` wants to create symlinks, you'll see a prompt:
 
-For example, if you're setting up on a new machine that has a default config at `~/.config/nvim`:
-
-```sh
-mv ~/.config/nvim ~/.config/nvim.bak
-store
 ```
+The following files conflict with store symlinks:
+  ~/.config/nvim (directory -> will be moved to ~/dotfiles/nvim)
+  ~/.zshrc (file -> will be moved to ~/dotfiles/shells/.zshrc)
+
+Move these files into the store and create symlinks? [y/N]
+```
+
+Answering **y** moves the conflicting files into your store directories and creates the symlinks. This is useful when setting up on a machine that already has config files -- the existing files become the store-managed versions.
+
+If a file already exists in the store directory, it is backed up with a `.bak` suffix before the incoming file replaces it. For directory conflicts, the contents are merged into the store directory.
+
+Answering **N** (the default) aborts the operation with no changes made.
 
 ### "[broken]" status
 
