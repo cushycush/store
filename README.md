@@ -14,9 +14,11 @@ Your dotfiles repo might look like this:
   nvim/
     init.lua
     lua/
-  zsh/
+  shells/
     .zshrc
-    .zshenv
+    .bashrc
+    config.fish
+    config.nu
   git/
     .gitconfig
 ```
@@ -24,11 +26,15 @@ Your dotfiles repo might look like this:
 `store` creates symlinks so that each directory appears at its configured target:
 
 ```
-~/.config/nvim  ->  ~/dotfiles/nvim
-~/.zshrc        ->  ~/dotfiles/zsh/.zshrc
-~/.zshenv       ->  ~/dotfiles/zsh/.zshenv
-~/.config/git   ->  ~/dotfiles/git
+~/.config/nvim       ->  ~/dotfiles/nvim
+~/.zshrc             ->  ~/dotfiles/shells/.zshrc
+~/.bashrc            ->  ~/dotfiles/shells/.bashrc
+~/.config/fish/config.fish  ->  ~/dotfiles/shells/config.fish
+~/.config/nushell/config.nu ->  ~/dotfiles/shells/config.nu
+~/.config/git        ->  ~/dotfiles/git
 ```
+
+A single store can have multiple targets, so files that belong together conceptually (like shell configs) can live in one directory even if they deploy to different locations on disk.
 
 All configuration lives in a single `.store/config.yaml` file that you commit alongside your dotfiles.
 
@@ -40,6 +46,7 @@ All configuration lives in a single `.store/config.yaml` file that you commit al
 | **Target paths** | Inferred from directory structure and stow directory location | Explicitly declared per store in YAML config |
 | **Configuration** | Convention-based (directory layout is the config) | Single `config.yaml` file |
 | **Granularity** | Symlinks individual files within directories | Symlinks whole directories or individual files via patterns |
+| **Multiple targets** | Requires separate packages per target location | One store can deploy to multiple target paths |
 | **Setup on new machine** | Run `stow` per package from the correct parent directory | Run `store` from anywhere in the repo |
 
 ## Installation
@@ -55,7 +62,7 @@ go install github.com/cush/store/cmd/store@latest
 ```sh
 git clone https://github.com/cush/store.git
 cd store
-make build VERSION=0.1.0
+make build VERSION=0.3.0
 # Move the binary somewhere in your PATH
 mv store /usr/local/bin/
 ```
@@ -81,29 +88,40 @@ This creates the `nvim/` directory, saves the target to `.store/config.yaml`, an
 3. Add a store with file-level symlinks for files that live in `~`:
 
 ```sh
-store add zsh -t ~ -f .zshrc -f .zshenv
+store add shells -t ~ -f .zshrc -f .bashrc
 ```
 
-This creates individual symlinks: `~/.zshrc -> ~/dotfiles/zsh/.zshrc` and `~/.zshenv -> ~/dotfiles/zsh/.zshenv`.
+This creates individual symlinks: `~/.zshrc -> ~/dotfiles/shells/.zshrc` and `~/.bashrc -> ~/dotfiles/shells/.bashrc`.
 
-4. Move your existing config files into the store directories:
+4. Add another target to the same store for files that live elsewhere:
+
+```sh
+store target add shells -t ~/.config/fish -f config.fish
+store target add shells -t ~/.config/nushell -f config.nu
+```
+
+Now the `shells` store deploys to three different locations from a single directory.
+
+5. Move your existing config files into the store directories:
 
 ```sh
 mv ~/.config/nvim/init.lua ~/dotfiles/nvim/
-mv ~/.zshrc ~/dotfiles/zsh/
-mv ~/.zshenv ~/dotfiles/zsh/
+mv ~/.zshrc ~/dotfiles/shells/
+mv ~/.bashrc ~/dotfiles/shells/
+mv ~/.config/fish/config.fish ~/dotfiles/shells/
+mv ~/.config/nushell/config.nu ~/dotfiles/shells/
 ```
 
 Since the symlinks point back to the repo directories, your tools pick up the files seamlessly.
 
-5. Commit and push:
+6. Commit and push:
 
 ```sh
 git add -A && git commit -m "add configs"
 git push
 ```
 
-6. On a new machine, clone and restore all symlinks:
+7. On a new machine, clone and restore all symlinks:
 
 ```sh
 git clone https://github.com/you/dotfiles.git ~/dotfiles
@@ -123,7 +141,9 @@ Creates or restores symlinks for all stores in the config. This is the command y
 $ store
 Storing all stores:
   nvim -> ~/.config/nvim
-  zsh -> ~ (files)
+  shells -> ~ (files)
+  shells -> ~/.config/fish (files)
+  shells -> ~/.config/nushell (files)
   git -> ~/.config/git
 ```
 
@@ -196,6 +216,8 @@ $ store modify zsh --clear-patterns
 
 Old symlinks are removed before the updated entry is applied.
 
+**Note:** For stores with multiple targets, use `store target modify` instead. `store modify` only works on single-target stores.
+
 **Flags:**
 
 | Flag | Short | Description |
@@ -205,6 +227,67 @@ Old symlinks are removed before the updated entry is applied.
 | `--patterns` | `-p` | Replace pattern list (repeatable) |
 | `--clear-files` | | Remove all files from the entry |
 | `--clear-patterns` | | Remove all patterns from the entry |
+
+### `store target add <name>`
+
+Adds a new target to an existing store. If the store currently uses the single-target format, it is automatically migrated to the multi-target format.
+
+```sh
+# Add a second target to an existing store
+$ store target add shells -t ~/.config/fish -f config.fish
+  shells -> ~/.config/fish (files)
+
+# Add a target with patterns
+$ store target add shells -t ~/.config/nushell -p "*.nu"
+  shells -> ~/.config/nushell (files)
+```
+
+**Flags:**
+
+| Flag | Short | Description |
+|---|---|---|
+| `--target` | `-t` | Target path for the symlink (required) |
+| `--files` | `-f` | Explicit files to symlink (repeatable) |
+| `--patterns` | `-p` | Glob patterns to match files (repeatable, supports `**`) |
+
+### `store target remove <name>`
+
+Removes a specific target from a store by its path. Symlinks for the removed target are unlinked. If only one target remains, the store is automatically migrated back to the single-target format.
+
+```sh
+$ store target remove shells -t ~/.config/fish
+  removed target ~/.config/fish from shells
+```
+
+**Flags:**
+
+| Flag | Short | Description |
+|---|---|---|
+| `--target` | `-t` | Target path to remove (required) |
+
+### `store target modify <name>`
+
+Modifies the files or patterns for a specific target within a store. The target is identified by its path. Each provided flag replaces the entire field.
+
+```sh
+# Add a file to an existing target
+$ store target modify shells -t ~ -f .zshrc -f .bashrc -f .zprofile
+
+# Switch a target from files to patterns
+$ store target modify shells -t ~ --clear-files -p ".zsh*" -p ".bash*"
+```
+
+Old symlinks for the target are removed before the updated entry is applied.
+
+**Flags:**
+
+| Flag | Short | Description |
+|---|---|---|
+| `--target` | `-t` | Target path to modify (required) |
+| `--files` | `-f` | Replace file list (repeatable) |
+| `--patterns` | `-p` | Replace pattern list (repeatable) |
+| `--clear-files` | | Remove all files from the target |
+| `--clear-patterns` | | Remove all patterns from the target |
 
 ### `store remove <name>`
 
@@ -225,7 +308,9 @@ Removes symlinks and config entries for all stores. If a particular store fails 
 $ store removeall
 Removing all stores:
   removed nvim (~/.config/nvim)
-  removed zsh (~)
+  removed shells (~)
+  removed shells (~/.config/fish)
+  removed shells (~/.config/nushell)
   removed git (~/.config/git)
 ```
 
@@ -235,20 +320,20 @@ Prints the current version.
 
 ```sh
 $ store version
-store version 0.1.0
+store version 0.3.0
 ```
 
 The `--version` flag also works:
 
 ```sh
 $ store --version
-store version 0.1.0
+store version 0.3.0
 ```
 
 When built without a version (e.g., `go build ./cmd/store`), the version defaults to `dev`. Use the Makefile to build with a specific version:
 
 ```sh
-make build VERSION=0.1.0
+make build VERSION=0.3.0
 ```
 
 ### `store status [name]`
@@ -258,8 +343,10 @@ Shows the symlink status for one or all stores. For file-mode stores, each file 
 ```sh
 $ store status
   nvim                 [linked]   ~/.config/nvim
-  zsh                  .zshrc               [linked]   ~/.zshrc
-  zsh                  .zshenv              [linked]   ~/.zshenv
+  shells               .zshrc               [linked]   ~/.zshrc
+  shells               .bashrc              [linked]   ~/.bashrc
+  shells               config.fish          [linked]   ~/.config/fish/config.fish
+  shells               config.nu            [linked]   ~/.config/nushell/config.nu
   git                  [conflict] ~/.config/git
 ```
 
@@ -272,6 +359,10 @@ $ store status nvim
 
 Configuration is stored in `.store/config.yaml` at the root of your repository:
 
+#### Single-target format
+
+The simplest format maps a store to one target path:
+
 ```yaml
 stores:
     nvim:
@@ -281,22 +372,41 @@ stores:
         files:
             - .zshrc
             - .zshenv
-    shell:
-        target: ~
-        patterns:
-            - ".zsh*"
-            - ".bash*"
-    configs:
-        target: ~/.config
-        patterns:
-            - "**/*.conf"
     git:
         target: ~/.config/git
 ```
 
-Each entry maps a store name (a directory in your repo) to a target path (where symlinks are created).
+#### Multi-target format
+
+A store can deploy to multiple target paths using the `targets` list. Each entry has its own `target`, `files`, and `patterns`:
+
+```yaml
+stores:
+    nvim:
+        target: ~/.config/nvim
+    shells:
+        targets:
+            - target: ~
+              files:
+                  - .zshrc
+                  - .bashrc
+            - target: ~/.config/fish
+              files:
+                  - config.fish
+            - target: ~/.config/nushell
+              patterns:
+                  - "*.nu"
+    git:
+        target: ~/.config/git
+```
+
+Using both `target` and `targets` on the same store entry is invalid.
+
+Each entry maps a store name (a directory in your repo) to one or more target paths (where symlinks are created).
 
 ### Entry Fields
+
+#### Single-target fields
 
 | Field | Required | Description |
 |---|---|---|
@@ -304,11 +414,22 @@ Each entry maps a store name (a directory in your repo) to a target path (where 
 | `files` | No | Explicit list of files to symlink individually. |
 | `patterns` | No | Glob patterns to match files. Supports `*`, `?`, `[...]`, and `**` for recursive matching. |
 
+#### Multi-target fields
+
+| Field | Required | Description |
+|---|---|---|
+| `targets` | No | List of target entries, each with its own `target`, `files`, and `patterns`. |
+| `targets[].target` | Yes | Where symlinks are created for this target entry. |
+| `targets[].files` | No | Explicit list of files to symlink individually for this target. |
+| `targets[].patterns` | No | Glob patterns to match files for this target. |
+
 **Behavior:**
 
 - **No `files` or `patterns`:** The entire store directory is symlinked to the target (whole-directory mode).
 - **`files` and/or `patterns` specified:** Only matched files are symlinked individually. Directory structure is preserved at the target.
 - **Both `files` and `patterns`:** Results are combined and deduplicated.
+
+These rules apply independently to each target in a multi-target store. One target can use whole-directory mode while another uses file-level symlinks.
 
 ### Pattern Syntax
 
