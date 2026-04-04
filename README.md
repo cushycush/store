@@ -47,6 +47,7 @@ All configuration lives in a single `.store/config.yaml` file that you commit al
 | **Configuration** | Convention-based (directory layout is the config) | Single `config.yaml` file |
 | **Granularity** | Symlinks individual files within directories | Symlinks whole directories or individual files via patterns |
 | **Multiple targets** | Requires separate packages per target location | One store can deploy to multiple target paths |
+| **Conflict handling** | Refuses to proceed; user must manually move files | Detects conflicts, offers to move existing files into the store automatically |
 | **Setup on new machine** | Run `stow` per package from the correct parent directory | Run `store` from anywhere in the repo |
 
 ## Installation
