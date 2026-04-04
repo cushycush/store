@@ -11,31 +11,25 @@ import (
 	"github.com/cush/store/internal/matcher"
 )
 
-// Store creates symlinks for a single store entry.
-// In file mode (files/patterns specified), it creates per-file symlinks.
-// Otherwise, it creates a single directory symlink.
-func Store(root string, name string, entry config.StoreEntry) error {
-	if entry.Target == "" {
-		return nil // No target configured yet; skip silently.
-	}
-
+// StoreTarget creates symlinks for a single target entry within a store.
+func StoreTarget(root string, name string, te config.TargetEntry) error {
 	source := filepath.Join(root, name)
-	target, err := config.ExpandHome(entry.Target)
+	target, err := config.ExpandHome(te.Target)
 	if err != nil {
-		return fmt.Errorf("store %q: %w", name, err)
+		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 	}
 
-	if !entry.HasFileMode() {
+	if !te.HasFileMode() {
 		if err := linker.Link(source, target); err != nil {
-			return fmt.Errorf("store %q: %w", name, err)
+			return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 		}
 		return nil
 	}
 
 	// File mode: resolve matches and link each file.
-	files, err := matcher.Match(source, entry.Files, entry.Patterns)
+	files, err := matcher.Match(source, te.Files, te.Patterns)
 	if err != nil {
-		return fmt.Errorf("store %q: %w", name, err)
+		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 	}
 
 	var errors []error
@@ -51,7 +45,31 @@ func Store(root string, name string, entry config.StoreEntry) error {
 		for _, err := range errors {
 			fmt.Printf("  error: %s\n", err)
 		}
-		return fmt.Errorf("store %q: %d file(s) failed", name, len(errors))
+		return fmt.Errorf("store %q target %q: %d file(s) failed", name, te.Target, len(errors))
+	}
+
+	return nil
+}
+
+// Store creates symlinks for a single store entry (all targets).
+func Store(root string, name string, entry config.StoreEntry) error {
+	targets := entry.ResolvedTargets()
+	if len(targets) == 0 {
+		return nil // No targets configured yet; skip silently.
+	}
+
+	var errors []error
+	for _, te := range targets {
+		if err := StoreTarget(root, name, te); err != nil {
+			errors = append(errors, err)
+		}
+	}
+
+	if len(errors) > 0 {
+		for _, err := range errors {
+			fmt.Printf("  error: %s\n", err)
+		}
+		return fmt.Errorf("store %q: %d target(s) failed", name, len(errors))
 	}
 
 	return nil
@@ -67,11 +85,13 @@ func StoreAll(root string, cfg *config.Config) error {
 	for name, entry := range cfg.Stores {
 		if err := Store(root, name, entry); err != nil {
 			errors = append(errors, err)
-		} else if entry.Target != "" {
-			if entry.HasFileMode() {
-				fmt.Printf("  %s -> %s (files)\n", name, entry.Target)
-			} else {
-				fmt.Printf("  %s -> %s\n", name, entry.Target)
+		} else {
+			for _, te := range entry.ResolvedTargets() {
+				if te.HasFileMode() {
+					fmt.Printf("  %s -> %s (files)\n", name, te.Target)
+				} else {
+					fmt.Printf("  %s -> %s\n", name, te.Target)
+				}
 			}
 		}
 	}
@@ -87,29 +107,25 @@ func StoreAll(root string, cfg *config.Config) error {
 	return nil
 }
 
-// StoreRemove removes symlinks for a single store.
-func StoreRemove(root string, name string, entry config.StoreEntry) error {
-	if entry.Target == "" {
-		return nil
-	}
-
+// StoreRemoveTarget removes symlinks for a single target entry within a store.
+func StoreRemoveTarget(root string, name string, te config.TargetEntry) error {
 	source := filepath.Join(root, name)
-	target, err := config.ExpandHome(entry.Target)
+	target, err := config.ExpandHome(te.Target)
 	if err != nil {
-		return fmt.Errorf("store %q: %w", name, err)
+		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 	}
 
-	if !entry.HasFileMode() {
+	if !te.HasFileMode() {
 		if err := linker.Unlink(source, target); err != nil {
-			return fmt.Errorf("store %q: %w", name, err)
+			return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 		}
 		return nil
 	}
 
 	// File mode: resolve matches and unlink each file.
-	files, err := matcher.Match(source, entry.Files, entry.Patterns)
+	files, err := matcher.Match(source, te.Files, te.Patterns)
 	if err != nil {
-		return fmt.Errorf("store %q: %w", name, err)
+		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 	}
 
 	var errors []error
@@ -125,13 +141,33 @@ func StoreRemove(root string, name string, entry config.StoreEntry) error {
 		for _, err := range errors {
 			fmt.Printf("  error: %s\n", err)
 		}
-		return fmt.Errorf("store %q: %d file(s) failed to unlink", name, len(errors))
+		return fmt.Errorf("store %q target %q: %d file(s) failed to unlink", name, te.Target, len(errors))
 	}
 
-	// Clean up empty parent directories that were created under the target
-	// during file-mode linking (via MkdirAll). Walk deepest paths first so
-	// nested dirs are removed before their parents.
 	cleanupEmptyDirs(target, files)
+	return nil
+}
+
+// StoreRemove removes symlinks for a single store (all targets).
+func StoreRemove(root string, name string, entry config.StoreEntry) error {
+	targets := entry.ResolvedTargets()
+	if len(targets) == 0 {
+		return nil
+	}
+
+	var errors []error
+	for _, te := range targets {
+		if err := StoreRemoveTarget(root, name, te); err != nil {
+			errors = append(errors, err)
+		}
+	}
+
+	if len(errors) > 0 {
+		for _, err := range errors {
+			fmt.Printf("  error: %s\n", err)
+		}
+		return fmt.Errorf("store %q: %d target(s) failed to unlink", name, len(errors))
+	}
 
 	return nil
 }
@@ -187,8 +223,10 @@ func StoreRemoveAll(root string, cfg *config.Config) error {
 	for name, entry := range cfg.Stores {
 		if err := StoreRemove(root, name, entry); err != nil {
 			errors = append(errors, err)
-		} else if entry.Target != "" {
-			fmt.Printf("  removed %s (%s)\n", name, entry.Target)
+		} else {
+			for _, te := range entry.ResolvedTargets() {
+				fmt.Printf("  removed %s (%s)\n", name, te.Target)
+			}
 		}
 	}
 
@@ -212,10 +250,11 @@ type StatusInfo struct {
 	Error  error
 }
 
-// GetStatus checks the symlink status of a single store.
-// For file-mode entries, it returns one StatusInfo per matched file.
+// GetStatus checks the symlink status of a single store (all targets).
+// For file-mode targets, it returns one StatusInfo per matched file.
 func GetStatus(root string, name string, entry config.StoreEntry) []StatusInfo {
-	if entry.Target == "" {
+	targets := entry.ResolvedTargets()
+	if len(targets) == 0 {
 		return []StatusInfo{{
 			Name:  name,
 			Error: fmt.Errorf("no target configured"),
@@ -223,48 +262,55 @@ func GetStatus(root string, name string, entry config.StoreEntry) []StatusInfo {
 	}
 
 	source := filepath.Join(root, name)
-	target, err := config.ExpandHome(entry.Target)
-	if err != nil {
-		return []StatusInfo{{Name: name, Target: entry.Target, Error: err}}
-	}
+	var results []StatusInfo
 
-	if !entry.HasFileMode() {
-		info := StatusInfo{
-			Name:   name,
-			Target: entry.Target,
-		}
-		status, err := linker.Check(source, target)
+	for _, te := range targets {
+		target, err := config.ExpandHome(te.Target)
 		if err != nil {
-			info.Error = err
-		} else {
-			info.Status = status
+			results = append(results, StatusInfo{Name: name, Target: te.Target, Error: err})
+			continue
 		}
-		return []StatusInfo{info}
-	}
 
-	// File mode: check each matched file.
-	files, err := matcher.Match(source, entry.Files, entry.Patterns)
-	if err != nil {
-		return []StatusInfo{{Name: name, Target: entry.Target, Error: err}}
-	}
-
-	results := make([]StatusInfo, 0, len(files))
-	for _, rel := range files {
-		src := filepath.Join(source, rel)
-		tgt := filepath.Join(target, rel)
-		info := StatusInfo{
-			Name:   name,
-			File:   rel,
-			Target: filepath.Join(entry.Target, rel),
+		if !te.HasFileMode() {
+			info := StatusInfo{
+				Name:   name,
+				Target: te.Target,
+			}
+			status, err := linker.Check(source, target)
+			if err != nil {
+				info.Error = err
+			} else {
+				info.Status = status
+			}
+			results = append(results, info)
+			continue
 		}
-		status, err := linker.Check(src, tgt)
+
+		// File mode: check each matched file.
+		files, err := matcher.Match(source, te.Files, te.Patterns)
 		if err != nil {
-			info.Error = err
-		} else {
-			info.Status = status
+			results = append(results, StatusInfo{Name: name, Target: te.Target, Error: err})
+			continue
 		}
-		results = append(results, info)
+
+		for _, rel := range files {
+			src := filepath.Join(source, rel)
+			tgt := filepath.Join(target, rel)
+			info := StatusInfo{
+				Name:   name,
+				File:   rel,
+				Target: filepath.Join(te.Target, rel),
+			}
+			status, err := linker.Check(src, tgt)
+			if err != nil {
+				info.Error = err
+			} else {
+				info.Status = status
+			}
+			results = append(results, info)
+		}
 	}
+
 	return results
 }
 

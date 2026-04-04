@@ -13,17 +13,107 @@ const (
 	ConfigFile = "config.yaml"
 )
 
-// StoreEntry represents a single store's configuration.
-type StoreEntry struct {
+// TargetEntry represents a single target within a store.
+type TargetEntry struct {
 	Target   string   `yaml:"target,omitempty"`
 	Files    []string `yaml:"files,omitempty"`
 	Patterns []string `yaml:"patterns,omitempty"`
 }
 
-// HasFileMode returns true if the entry specifies individual files or patterns
+// HasFileMode returns true if the target specifies individual files or patterns
 // rather than a whole-directory symlink.
+func (t TargetEntry) HasFileMode() bool {
+	return len(t.Files) > 0 || len(t.Patterns) > 0
+}
+
+// StoreEntry represents a single store's configuration.
+// It supports two formats:
+//   - Single-target: uses Target, Files, Patterns fields directly.
+//   - Multi-target: uses the Targets list, each with its own Target/Files/Patterns.
+//
+// Using both Target and Targets on the same entry is invalid.
+type StoreEntry struct {
+	Target   string   `yaml:"target,omitempty"`
+	Files    []string `yaml:"files,omitempty"`
+	Patterns []string `yaml:"patterns,omitempty"`
+
+	Targets []TargetEntry `yaml:"targets,omitempty"`
+}
+
+// HasFileMode returns true if any resolved target specifies individual files
+// or patterns rather than a whole-directory symlink.
 func (e StoreEntry) HasFileMode() bool {
-	return len(e.Files) > 0 || len(e.Patterns) > 0
+	for _, t := range e.ResolvedTargets() {
+		if t.HasFileMode() {
+			return true
+		}
+	}
+	return false
+}
+
+// IsMultiTarget returns true if the entry uses the targets list format.
+func (e StoreEntry) IsMultiTarget() bool {
+	return len(e.Targets) > 0
+}
+
+// ResolvedTargets normalizes both single-target and multi-target formats
+// into a slice of TargetEntry.
+func (e StoreEntry) ResolvedTargets() []TargetEntry {
+	if len(e.Targets) > 0 {
+		return e.Targets
+	}
+	if e.Target == "" {
+		return nil
+	}
+	return []TargetEntry{{
+		Target:   e.Target,
+		Files:    e.Files,
+		Patterns: e.Patterns,
+	}}
+}
+
+// Validate checks that the entry is well-formed.
+func (e StoreEntry) Validate() error {
+	if e.Target != "" && len(e.Targets) > 0 {
+		return fmt.Errorf("cannot use both 'target' and 'targets' on the same store entry")
+	}
+	if len(e.Targets) > 0 {
+		// Files/Patterns at the top level are invalid with targets.
+		if len(e.Files) > 0 || len(e.Patterns) > 0 {
+			return fmt.Errorf("cannot use top-level 'files' or 'patterns' with 'targets'; place them inside each target entry")
+		}
+		for i, t := range e.Targets {
+			if t.Target == "" {
+				return fmt.Errorf("targets[%d]: target path is required", i)
+			}
+		}
+	}
+	return nil
+}
+
+// MigrateToMultiTarget converts a single-target entry to multi-target format.
+func (e *StoreEntry) MigrateToMultiTarget() {
+	if e.Target != "" {
+		e.Targets = append(e.Targets, TargetEntry{
+			Target:   e.Target,
+			Files:    e.Files,
+			Patterns: e.Patterns,
+		})
+		e.Target = ""
+		e.Files = nil
+		e.Patterns = nil
+	}
+}
+
+// MigrateToSingleTarget converts back to single-target format if only one target remains.
+func (e *StoreEntry) MigrateToSingleTarget() {
+	if len(e.Targets) == 1 {
+		t := e.Targets[0]
+		e.Target = t.Target
+		e.Files = t.Files
+		e.Patterns = t.Patterns
+		e.Targets = nil
+	}
 }
 
 // Config represents the full .store/config.yaml file.
@@ -51,6 +141,12 @@ func Load(root string) (*Config, error) {
 
 	if cfg.Stores == nil {
 		cfg.Stores = make(map[string]StoreEntry)
+	}
+
+	for name, entry := range cfg.Stores {
+		if err := entry.Validate(); err != nil {
+			return nil, fmt.Errorf("store %q: %w", name, err)
+		}
 	}
 
 	return &cfg, nil
