@@ -1,7 +1,9 @@
 package linker
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -116,6 +118,23 @@ func Link(source, target string) error {
 	absSource, err := filepath.Abs(source)
 	if err != nil {
 		return fmt.Errorf("failed to resolve source path: %w", err)
+	}
+
+	// Retry symlink creation in case an external process (e.g. rofi)
+	// recreates the target path between conflict resolution and linking
+	const maxRetries = 3
+	for attempt := range maxRetries {
+		err = os.Symlink(absSource, target)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, fs.ErrExist) || attempt == maxRetries-1 {
+			return fmt.Errorf("failed to create symlink %s -> %s: %w", target, absSource, err)
+		}
+		// Target was recreated externally - remove it and retry
+		if removeErr := os.RemoveAll(target); removeErr != nil {
+			return fmt.Errorf("failed to remove recreated target %s: %w", target, removeErr)
+		}
 	}
 
 	if err := os.Symlink(absSource, target); err != nil {
