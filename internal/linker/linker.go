@@ -1,7 +1,9 @@
 package linker
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -37,6 +39,8 @@ func (s Status) String() string {
 
 // Check examines the target path and returns the symlink status relative to the source.
 func Check(source, target string) (Status, error) {
+	target = filepath.Clean(target)
+
 	fi, err := os.Lstat(target)
 	if os.IsNotExist(err) {
 		return StatusMissing, nil
@@ -87,6 +91,8 @@ func Check(source, target string) (Status, error) {
 // It creates parent directories as needed.
 // Returns an error if something already exists at the target path.
 func Link(source, target string) error {
+	target = filepath.Clean(target)
+
 	status, err := Check(source, target)
 	if err != nil {
 		return err
@@ -118,6 +124,23 @@ func Link(source, target string) error {
 		return fmt.Errorf("failed to resolve source path: %w", err)
 	}
 
+	// Retry symlink creation in case an external process (e.g. rofi)
+	// recreates the target path between conflict resolution and linking
+	const maxRetries = 3
+	for attempt := range maxRetries {
+		err = os.Symlink(absSource, target)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, fs.ErrExist) || attempt == maxRetries-1 {
+			return fmt.Errorf("failed to create symlink %s -> %s: %w", target, absSource, err)
+		}
+		// Target was recreated externally - remove it and retry
+		if removeErr := os.RemoveAll(target); removeErr != nil {
+			return fmt.Errorf("failed to remove recreated target %s: %w", target, removeErr)
+		}
+	}
+
 	if err := os.Symlink(absSource, target); err != nil {
 		return fmt.Errorf("failed to create symlink %s -> %s: %w", target, absSource, err)
 	}
@@ -127,6 +150,8 @@ func Link(source, target string) error {
 
 // Unlink removes the symlink at target, but only if it points to source.
 func Unlink(source, target string) error {
+	target = filepath.Clean(target)
+
 	status, err := Check(source, target)
 	if err != nil {
 		return err
