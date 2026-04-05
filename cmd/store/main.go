@@ -14,7 +14,10 @@ import (
 	storeops "github.com/cush/store/internal/store"
 )
 
-var version = "dev"
+var (
+	version      = "dev"
+	forceBackups bool
+)
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -24,6 +27,7 @@ func main() {
 		Version: version,
 		RunE:    runStoreAll,
 	}
+	rootCmd.PersistentFlags().BoolVar(&forceBackups, "force", false, "create .bak backups without prompting")
 
 	initCmd := &cobra.Command{
 		Use:   "init",
@@ -739,6 +743,30 @@ func printConflicts(conflicts []storeops.ConflictInfo) {
 	}
 }
 
+func checkBackups(conflicts []storeops.ConflictInfo) error {
+	backups, err := storeops.CollectBackups(conflicts)
+	if err != nil {
+		return err
+	}
+	if len(backups) == 0 {
+		return nil
+	}
+
+	fmt.Println("The following files in the store will be backed up (.bak):")
+	for _, b := range backups {
+		fmt.Printf(" %s\n", b)
+	}
+	fmt.Println()
+
+	if !forceBackups {
+		if !promptYesNo("Proceed with creating backups?") {
+			return fmt.Errorf("aborted due to backup conflicts")
+		}
+	}
+
+	return nil
+}
+
 // storeWithConflictResolution checks for conflicts, prompts the user to resolve
 // them, then creates symlinks for all targets in the entry.
 func storeWithConflictResolution(root, name string, entry config.StoreEntry) error {
@@ -752,6 +780,9 @@ func storeWithConflictResolution(root, name string, entry config.StoreEntry) err
 		fmt.Println()
 		if !promptYesNo("Move these files into the store and create symlinks?") {
 			return fmt.Errorf("aborted due to unresolved conflicts")
+		}
+		if err := checkBackups(conflicts); err != nil {
+			return err
 		}
 		if err := storeops.ResolveConflicts(conflicts); err != nil {
 			return err
@@ -775,6 +806,9 @@ func storeTargetWithConflictResolution(root, name string, te config.TargetEntry)
 		fmt.Println()
 		if !promptYesNo("Move these files into the store and create symlinks?") {
 			return fmt.Errorf("aborted due to unresolved conflicts")
+		}
+		if err := checkBackups(conflicts); err != nil {
+			return err
 		}
 		if err := storeops.ResolveConflicts(conflicts); err != nil {
 			return err
@@ -807,6 +841,9 @@ func storeAllWithConflictResolution(root string, cfg *config.Config) error {
 		fmt.Println()
 		if !promptYesNo("Move these files into the store and create symlinks?") {
 			return fmt.Errorf("aborted due to unresolved conflicts")
+		}
+		if err := checkBackups(allConflicts); err != nil {
+			return err
 		}
 		if err := storeops.ResolveConflicts(allConflicts); err != nil {
 			return err
