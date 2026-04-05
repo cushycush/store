@@ -39,6 +39,8 @@ func (s Status) String() string {
 
 // Check examines the target path and returns the symlink status relative to the source.
 func Check(source, target string) (Status, error) {
+	target = filepath.Clean(target)
+
 	fi, err := os.Lstat(target)
 	if os.IsNotExist(err) {
 		return StatusMissing, nil
@@ -89,6 +91,8 @@ func Check(source, target string) (Status, error) {
 // It creates parent directories as needed.
 // Returns an error if something already exists at the target path.
 func Link(source, target string) error {
+	target = filepath.Clean(target)
+
 	status, err := Check(source, target)
 	if err != nil {
 		return err
@@ -146,6 +150,8 @@ func Link(source, target string) error {
 
 // Unlink removes the symlink at target, but only if it points to source.
 func Unlink(source, target string) error {
+	target = filepath.Clean(target)
+
 	status, err := Check(source, target)
 	if err != nil {
 		return err
