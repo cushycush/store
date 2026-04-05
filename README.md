@@ -139,6 +139,21 @@ Running `store` with no subcommand creates symlinks for all stores defined in th
 
 Creates or restores symlinks for all stores in the config. This is the command you run after cloning your dotfiles repo on a new machine.
 
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `--only` | Only store specific entries by name (repeatable) |
+| `--force` | Create .bak backups without prompting |
+
+```sh
+# Store only specific entries
+$ store --only nvim --only git
+
+# Automatically accept backup prompts
+$ store --force
+```
+
 ```sh
 $ store
 Storing all stores:
@@ -465,7 +480,7 @@ Relative paths provided via `--target` are automatically converted to absolute p
 
 - **Root discovery:** Commands can be run from any subdirectory. `store` walks up the directory tree to find the nearest `.store/` directory, similar to how `git` finds `.git/`.
 - **Symlinks are absolute:** When creating symlinks, source paths are resolved to absolute paths. This means symlinks work regardless of your working directory.
-- **Conflict resolution:** Before creating symlinks, `store` checks all target paths for conflicts. If files or directories already exist that aren't managed by store, it lists them and offers to move them into the store directory automatically. If a file already exists in the store directory, it is backed up with a `.bak` suffix before the move. For directory conflicts, the contents are merged into the store directory.
+- **Conflict resolution:** Before creating symlinks, `store` checks all target paths for conflicts. If files or directories already exist that aren't managed by store, it lists them and offers to move them into the store directory automatically. For directory conflicts, the contents are merged into the store directory. If any files already exist in the store directory, they are listed and a separate confirmation is required before creating `.bak` backups. Use `--force` to skip the backup confirmation.
 - **Broken symlink recovery:** If a symlink exists but points to a nonexistent path, `store` removes it and creates a fresh one pointing to the correct source.
 - **File matching performance:** Explicit `files` entries are validated with a single stat call each (no directory walking). Simple glob patterns use `Glob` without recursive traversal. Only `**` patterns trigger a full directory walk, using the efficient `WalkDir` API.
 
@@ -485,7 +500,16 @@ Move these files into the store and create symlinks? [y/N]
 
 Answering **y** moves the conflicting files into your store directories and creates the symlinks. This is useful when setting up on a machine that already has config files -- the existing files become the store-managed versions.
 
-If a file already exists in the store directory, it is backed up with a `.bak` suffix before the incoming file replaces it. For directory conflicts, the contents are merged into the store directory.
+If files already exist in the store directory, they are listed and a separate prompt asks for confirmation before creating `.bak` backups:
+
+```
+The following files in the store will be backed up (.bak):
+  ~/dotfiles/nvim/init.lua
+
+Proceed with creating backups? [y/N]
+```
+
+Use `--force` to skip this prompt (backups are still listed so you can clean them up afterward).
 
 Answering **N** (the default) aborts the operation with no changes made.
 
