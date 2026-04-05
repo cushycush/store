@@ -107,6 +107,63 @@ func ResolveConflicts(conflicts []ConflictInfo) error {
 	return nil
 }
 
+// CollectBackups checks which source paths already exist and would need .bak
+// backups during conflict resolution. Returns the list of source paths that
+// would be backed up. This is read-only and does not modify the filesystem.
+func CollectBackups(conflicts []ConflictInfo) ([]string, error) {
+	var backups []string
+
+	for _, c := range conflicts {
+		if c.IsDir {
+			dirBackups, err := collectDirectoryBackups(c.Source, c.Target)
+			if err != nil {
+				return nil, err
+			}
+
+			backups = append(backups, dirBackups...)
+		} else {
+			if needsBackup(c.Source) {
+				backups = append(backups, c.Source)
+			}
+		}
+	}
+
+	return backups, nil
+}
+
+func needsBackup(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
+func collectDirectoryBackups(source, target string) ([]string, error) {
+	var backups []string
+
+	err := filepath.WalkDir(target, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		rel, err := filepath.Rel(target, path)
+		if err != nil {
+			return err
+		}
+
+		srcPath := filepath.Join(source, rel)
+		if needsBackup(srcPath) {
+			backups = append(backups, srcPath)
+		}
+
+		return nil
+	})
+
+	return backups, err
+}
+
 // resolveFileConflict moves a single conflicting file from target into source.
 // If source already exists, it is backed up first.
 func resolveFileConflict(source, target string) error {
