@@ -40,15 +40,15 @@ All configuration lives in a single `.store/config.yaml` file that you commit al
 
 ## How It Differs from GNU Stow
 
-| | GNU Stow | store |
-|---|---|---|
-| **Directory structure** | Must mirror the target filesystem hierarchy | Flat -- each store is a top-level directory |
-| **Target paths** | Inferred from directory structure and stow directory location | Explicitly declared per store in YAML config |
-| **Configuration** | Convention-based (directory layout is the config) | Single `config.yaml` file |
-| **Granularity** | Symlinks individual files within directories | Symlinks whole directories or individual files via patterns |
-| **Multiple targets** | Requires separate packages per target location | One store can deploy to multiple target paths |
-| **Conflict handling** | Refuses to proceed; user must manually move files | Detects conflicts, offers to move existing files into the store automatically |
-| **Setup on new machine** | Run `stow` per package from the correct parent directory | Run `store` from anywhere in the repo |
+|                          | GNU Stow                                                      | store                                                                         |
+| ------------------------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **Directory structure**  | Must mirror the target filesystem hierarchy                   | Flat -- each store is a top-level directory                                   |
+| **Target paths**         | Inferred from directory structure and stow directory location | Explicitly declared per store in YAML config                                  |
+| **Configuration**        | Convention-based (directory layout is the config)             | Single `config.yaml` file                                                     |
+| **Granularity**          | Symlinks individual files within directories                  | Symlinks whole directories or individual files via patterns                   |
+| **Multiple targets**     | Requires separate packages per target location                | One store can deploy to multiple target paths                                 |
+| **Conflict handling**    | Refuses to proceed; user must manually move files             | Detects conflicts, offers to move existing files into the store automatically |
+| **Setup on new machine** | Run `stow` per package from the correct parent directory      | Run `store` from anywhere in the repo                                         |
 
 ## Installation
 
@@ -63,7 +63,7 @@ go install github.com/cush/store/cmd/store@latest
 ```sh
 git clone https://github.com/cush/store.git
 cd store
-make build VERSION=0.4.0
+make build VERSION=0.4.1
 # Move the binary somewhere in your PATH
 mv store /usr/local/bin/
 ```
@@ -141,10 +141,10 @@ Creates or restores symlinks for all stores in the config. This is the command y
 
 **Flags:**
 
-| Flag | Description |
-|---|---|
-| `--only` | Only store specific entries by name (repeatable) |
-| `--force` | Create .bak backups without prompting |
+| Flag      | Description                                      |
+| --------- | ------------------------------------------------ |
+| `--only`  | Only store specific entries by name (repeatable) |
+| `--force` | Create .bak backups without prompting            |
 
 ```sh
 # Store only specific entries
@@ -205,11 +205,11 @@ Added zsh to config (no target set)
 
 **Flags:**
 
-| Flag | Short | Description |
-|---|---|---|
-| `--target` | `-t` | Target path for the symlink |
-| `--files` | `-f` | Explicit files to symlink (repeatable) |
-| `--patterns` | `-p` | Glob patterns to match files (repeatable, supports `**`) |
+| Flag         | Short | Description                                              |
+| ------------ | ----- | -------------------------------------------------------- |
+| `--target`   | `-t`  | Target path for the symlink                              |
+| `--files`    | `-f`  | Explicit files to symlink (repeatable)                   |
+| `--patterns` | `-p`  | Glob patterns to match files (repeatable, supports `**`) |
 
 Target paths can use `~` for the home directory or absolute paths. Relative paths are automatically resolved to absolute paths.
 
@@ -237,13 +237,13 @@ Old symlinks are removed before the updated entry is applied.
 
 **Flags:**
 
-| Flag | Short | Description |
-|---|---|---|
-| `--target` | `-t` | New target path |
-| `--files` | `-f` | Replace file list (repeatable) |
-| `--patterns` | `-p` | Replace pattern list (repeatable) |
-| `--clear-files` | | Remove all files from the entry |
-| `--clear-patterns` | | Remove all patterns from the entry |
+| Flag               | Short | Description                        |
+| ------------------ | ----- | ---------------------------------- |
+| `--target`         | `-t`  | New target path                    |
+| `--files`          | `-f`  | Replace file list (repeatable)     |
+| `--patterns`       | `-p`  | Replace pattern list (repeatable)  |
+| `--clear-files`    |       | Remove all files from the entry    |
+| `--clear-patterns` |       | Remove all patterns from the entry |
 
 ### `store target add <name>`
 
@@ -261,11 +261,11 @@ $ store target add shells -t ~/.config/nushell -p "*.nu"
 
 **Flags:**
 
-| Flag | Short | Description |
-|---|---|---|
-| `--target` | `-t` | Target path for the symlink (required) |
-| `--files` | `-f` | Explicit files to symlink (repeatable) |
-| `--patterns` | `-p` | Glob patterns to match files (repeatable, supports `**`) |
+| Flag         | Short | Description                                              |
+| ------------ | ----- | -------------------------------------------------------- |
+| `--target`   | `-t`  | Target path for the symlink (required)                   |
+| `--files`    | `-f`  | Explicit files to symlink (repeatable)                   |
+| `--patterns` | `-p`  | Glob patterns to match files (repeatable, supports `**`) |
 
 ### `store target remove <name>`
 
@@ -278,9 +278,9 @@ $ store target remove shells -t ~/.config/fish
 
 **Flags:**
 
-| Flag | Short | Description |
-|---|---|---|
-| `--target` | `-t` | Target path to remove (required) |
+| Flag       | Short | Description                      |
+| ---------- | ----- | -------------------------------- |
+| `--target` | `-t`  | Target path to remove (required) |
 
 ### `store target modify <name>`
 
@@ -298,13 +298,13 @@ Old symlinks for the target are removed before the updated entry is applied.
 
 **Flags:**
 
-| Flag | Short | Description |
-|---|---|---|
-| `--target` | `-t` | Target path to modify (required) |
-| `--files` | `-f` | Replace file list (repeatable) |
-| `--patterns` | `-p` | Replace pattern list (repeatable) |
-| `--clear-files` | | Remove all files from the target |
-| `--clear-patterns` | | Remove all patterns from the target |
+| Flag               | Short | Description                         |
+| ------------------ | ----- | ----------------------------------- |
+| `--target`         | `-t`  | Target path to modify (required)    |
+| `--files`          | `-f`  | Replace file list (repeatable)      |
+| `--patterns`       | `-p`  | Replace pattern list (repeatable)   |
+| `--clear-files`    |       | Remove all files from the target    |
+| `--clear-patterns` |       | Remove all patterns from the target |
 
 ### `store remove <name>`
 
@@ -337,20 +337,20 @@ Prints the current version.
 
 ```sh
 $ store version
-store version 0.4.0
+store version 0.4.1
 ```
 
 The `--version` flag also works:
 
 ```sh
 $ store --version
-store version 0.4.0
+store version 0.4.1
 ```
 
 When built without a version (e.g., `go build ./cmd/store`), the version defaults to `dev`. Use the Makefile to build with a specific version:
 
 ```sh
-make build VERSION=0.4.0
+make build VERSION=0.4.1
 ```
 
 ### `store status [name]`
@@ -382,15 +382,15 @@ The simplest format maps a store to one target path:
 
 ```yaml
 stores:
-    nvim:
-        target: ~/.config/nvim
-    zsh:
-        target: ~
-        files:
-            - .zshrc
-            - .zshenv
-    git:
-        target: ~/.config/git
+  nvim:
+    target: ~/.config/nvim
+  zsh:
+    target: ~
+    files:
+      - .zshrc
+      - .zshenv
+  git:
+    target: ~/.config/git
 ```
 
 #### Multi-target format
@@ -399,22 +399,22 @@ A store can deploy to multiple target paths using the `targets` list. Each entry
 
 ```yaml
 stores:
-    nvim:
-        target: ~/.config/nvim
-    shells:
-        targets:
-            - target: ~
-              files:
-                  - .zshrc
-                  - .bashrc
-            - target: ~/.config/fish
-              files:
-                  - config.fish
-            - target: ~/.config/nushell
-              patterns:
-                  - "*.nu"
-    git:
-        target: ~/.config/git
+  nvim:
+    target: ~/.config/nvim
+  shells:
+    targets:
+      - target: ~
+        files:
+          - .zshrc
+          - .bashrc
+      - target: ~/.config/fish
+        files:
+          - config.fish
+      - target: ~/.config/nushell
+        patterns:
+          - "*.nu"
+  git:
+    target: ~/.config/git
 ```
 
 Using both `target` and `targets` on the same store entry is invalid.
@@ -425,20 +425,20 @@ Each entry maps a store name (a directory in your repo) to one or more target pa
 
 #### Single-target fields
 
-| Field | Required | Description |
-|---|---|---|
-| `target` | No | Where symlinks are created. Without a target, the entry is saved but no symlinks are created. |
-| `files` | No | Explicit list of files to symlink individually. |
-| `patterns` | No | Glob patterns to match files. Supports `*`, `?`, `[...]`, and `**` for recursive matching. |
+| Field      | Required | Description                                                                                   |
+| ---------- | -------- | --------------------------------------------------------------------------------------------- |
+| `target`   | No       | Where symlinks are created. Without a target, the entry is saved but no symlinks are created. |
+| `files`    | No       | Explicit list of files to symlink individually.                                               |
+| `patterns` | No       | Glob patterns to match files. Supports `*`, `?`, `[...]`, and `**` for recursive matching.    |
 
 #### Multi-target fields
 
-| Field | Required | Description |
-|---|---|---|
-| `targets` | No | List of target entries, each with its own `target`, `files`, and `patterns`. |
-| `targets[].target` | Yes | Where symlinks are created for this target entry. |
-| `targets[].files` | No | Explicit list of files to symlink individually for this target. |
-| `targets[].patterns` | No | Glob patterns to match files for this target. |
+| Field                | Required | Description                                                                  |
+| -------------------- | -------- | ---------------------------------------------------------------------------- |
+| `targets`            | No       | List of target entries, each with its own `target`, `files`, and `patterns`. |
+| `targets[].target`   | Yes      | Where symlinks are created for this target entry.                            |
+| `targets[].files`    | No       | Explicit list of files to symlink individually for this target.              |
+| `targets[].patterns` | No       | Glob patterns to match files for this target.                                |
 
 **Behavior:**
 
@@ -452,13 +452,13 @@ These rules apply independently to each target in a multi-target store. One targ
 
 Patterns use standard glob syntax with recursive matching support:
 
-| Pattern | Matches |
-|---|---|
-| `.zsh*` | `.zshrc`, `.zshenv`, etc. at the top level |
-| `*.conf` | All `.conf` files at the top level |
-| `**/*.conf` | All `.conf` files at any depth |
-| `config/*.lua` | `.lua` files inside `config/` |
-| `**/*.{lua,vim}` | `.lua` and `.vim` files at any depth |
+| Pattern          | Matches                                    |
+| ---------------- | ------------------------------------------ |
+| `.zsh*`          | `.zshrc`, `.zshenv`, etc. at the top level |
+| `*.conf`         | All `.conf` files at the top level         |
+| `**/*.conf`      | All `.conf` files at any depth             |
+| `config/*.lua`   | `.lua` files inside `config/`              |
+| `**/*.{lua,vim}` | `.lua` and `.vim` files at any depth       |
 
 ### Target Path Formats
 
@@ -469,12 +469,12 @@ Relative paths provided via `--target` are automatically converted to absolute p
 
 ## Status Indicators
 
-| Status | Meaning |
-|---|---|
-| `[linked]` | Symlink exists and points to the correct store directory or file. |
-| `[missing]` | No symlink exists at the target path. Run `store` to create it. |
+| Status       | Meaning                                                                                                                                       |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `[linked]`   | Symlink exists and points to the correct store directory or file.                                                                             |
+| `[missing]`  | No symlink exists at the target path. Run `store` to create it.                                                                               |
 | `[conflict]` | Something exists at the target path but it is not a symlink managed by store. Running `store` will offer to move it into the store directory. |
-| `[broken]` | A symlink exists but its destination no longer exists. Running `store` will replace it. |
+| `[broken]`   | A symlink exists but its destination no longer exists. Running `store` will replace it.                                                       |
 
 ## How It Works
 

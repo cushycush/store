@@ -141,10 +141,6 @@ func Link(source, target string) error {
 		}
 	}
 
-	if err := os.Symlink(absSource, target); err != nil {
-		return fmt.Errorf("failed to create symlink %s -> %s: %w", target, absSource, err)
-	}
-
 	return nil
 }
 
