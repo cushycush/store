@@ -116,9 +116,23 @@ func StoreRemoveTarget(root string, name string, te config.TargetEntry) error {
 	}
 
 	if !te.HasFileMode() {
-		if err := linker.Unlink(source, target); err != nil {
+		status, err := linker.Check(source, target)
+		if err != nil {
 			return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 		}
+
+		switch status {
+		case linker.StatusLinked, linker.StatusBroken:
+			if err := os.Remove(target); err != nil {
+				return fmt.Errorf("store %q target %q: failed to remove symlnk: %w", name, te.Target, err)
+			}
+		case linker.StatusMissing:
+			// Nothing at target; no symlink to remove.
+		case linker.StatusConflict:
+			// Target exists but isn't managed by store; skip without error.
+			fmt.Printf("  warning: %s is not a symlink managed by store, skipping unlink\n", target)
+		}
+
 		return nil
 	}
 
@@ -132,8 +146,21 @@ func StoreRemoveTarget(root string, name string, te config.TargetEntry) error {
 	for _, rel := range files {
 		src := filepath.Join(source, rel)
 		tgt := filepath.Join(target, rel)
-		if err := linker.Unlink(src, tgt); err != nil {
+		status, err := linker.Check(src, tgt)
+		if err != nil {
 			errors = append(errors, fmt.Errorf("  %s: %w", rel, err))
+			continue
+		}
+
+		switch status {
+		case linker.StatusLinked, linker.StatusBroken:
+			if err := os.Remove(tgt); err != nil {
+				errors = append(errors, fmt.Errorf("  %s: %w", rel, err))
+			}
+		case linker.StatusMissing:
+			// Nothing to do.
+		case linker.StatusConflict:
+			fmt.Printf("  warning: %s is not a symlink managed by store, skipping unlink\n", tgt)
 		}
 	}
 
