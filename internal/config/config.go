@@ -20,6 +20,12 @@ type TargetEntry struct {
 	Patterns []string `yaml:"patterns,omitempty"`
 }
 
+// HookEntry defines pre and post shell commands to run around store operations.
+type HookEntry struct {
+	Pre  string `yaml:"pre,omitempty"`
+	Post string `yaml:"post,omitempty"`
+}
+
 // HasFileMode returns true if the target specifies individual files or patterns
 // rather than a whole-directory symlink.
 func (t TargetEntry) HasFileMode() bool {
@@ -33,11 +39,11 @@ func (t TargetEntry) HasFileMode() bool {
 //
 // Using both Target and Targets on the same entry is invalid.
 type StoreEntry struct {
-	Target   string   `yaml:"target,omitempty"`
-	Files    []string `yaml:"files,omitempty"`
-	Patterns []string `yaml:"patterns,omitempty"`
-
-	Targets []TargetEntry `yaml:"targets,omitempty"`
+	Target   string        `yaml:"target,omitempty"`
+	Files    []string      `yaml:"files,omitempty"`
+	Patterns []string      `yaml:"patterns,omitempty"`
+	Targets  []TargetEntry `yaml:"targets,omitempty"`
+	Hooks    *HookEntry    `yaml:"hooks,omitempty"`
 }
 
 // HasFileMode returns true if any resolved target specifies individual files

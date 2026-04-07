@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cush/store/internal/config"
+	"github.com/cush/store/internal/hooks"
 	"github.com/cush/store/internal/linker"
 	storeops "github.com/cush/store/internal/store"
 )
@@ -357,8 +358,20 @@ func runStoreAll(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Global pre hook.
+	if err := hooks.RunGlobal(root, "pre-store", "link"); err != nil {
+		return err
+	}
+
 	fmt.Println("Storing all stores:")
-	return storeAllWithConflictResolution(root, cfg)
+	err = storeAllWithConflictResolution(root, cfg)
+
+	// Global post hook.
+	if err := hooks.RunGlobal(root, "post-store", "link"); err != nil {
+		fmt.Printf("  warning: %s\n", err)
+	}
+
+	return err
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
@@ -412,6 +425,11 @@ func runRemoveAll(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no stores defined in config")
 	}
 
+	// Global pre hook.
+	if err := hooks.RunGlobal(root, "pre-remove", "unlink"); err != nil {
+		return err
+	}
+
 	fmt.Println("Removing all stores:")
 	var errors []error
 	for name, entry := range cfg.Stores {
@@ -433,6 +451,11 @@ func runRemoveAll(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  error: %s\n", err)
 		}
 		return fmt.Errorf("%d store(s) failed", len(errors))
+	}
+
+	// Global post hook.
+	if err := hooks.RunGlobal(root, "post-remove", "unlink"); err != nil {
+		fmt.Printf("  warning: %s\n", err)
 	}
 
 	return nil
