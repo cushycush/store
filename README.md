@@ -63,7 +63,7 @@ go install github.com/cush/store/cmd/store@latest
 ```sh
 git clone https://github.com/cush/store.git
 cd store
-make build VERSION=0.4.1
+make build VERSION=0.5.0
 # Move the binary somewhere in your PATH
 mv store /usr/local/bin/
 ```
@@ -337,20 +337,20 @@ Prints the current version.
 
 ```sh
 $ store version
-store version 0.4.1
+store version 0.5.0
 ```
 
 The `--version` flag also works:
 
 ```sh
 $ store --version
-store version 0.4.1
+store version 0.5.0
 ```
 
 When built without a version (e.g., `go build ./cmd/store`), the version defaults to `dev`. Use the Makefile to build with a specific version:
 
 ```sh
-make build VERSION=0.4.1
+make build VERSION=0.5.0
 ```
 
 ### `store status [name]`
@@ -391,6 +391,10 @@ stores:
       - .zshenv
   git:
     target: ~/.config/git
+  tmux:
+    target: ~/.config/tmux
+    hooks:
+      post: "tmux source-file ~/.config/tmux/tmux.conf 2>/dev/null || true"
 ```
 
 #### Multi-target format
@@ -430,6 +434,7 @@ Each entry maps a store name (a directory in your repo) to one or more target pa
 | `target`   | No       | Where symlinks are created. Without a target, the entry is saved but no symlinks are created. |
 | `files`    | No       | Explicit list of files to symlink individually.                                               |
 | `patterns` | No       | Glob patterns to match files. Supports `*`, `?`, `[...]`, and `**` for recursive matching.    |
+| `hooks`    | No       | Pre/post shell commands to run around store operations. See [Hooks](#hooks).                   |
 
 #### Multi-target fields
 
@@ -467,6 +472,77 @@ Patterns use standard glob syntax with recursive matching support:
 
 Relative paths provided via `--target` are automatically converted to absolute paths.
 
+## Hooks
+
+Hooks let you run shell commands before or after store operations. There are two levels: per-store hooks defined in `config.yaml`, and global hooks defined as scripts in `.store/hooks/`.
+
+### Per-store hooks
+
+Add a `hooks` field to any store entry with `pre` and/or `post` commands:
+
+```yaml
+stores:
+  tmux:
+    target: ~/.config/tmux
+    hooks:
+      post: "tmux source-file ~/.config/tmux/tmux.conf 2>/dev/null || true"
+  nvim:
+    target: ~/.config/nvim
+    hooks:
+      pre: "nvim --headless -c 'checkhealth' -c 'qa' 2>/dev/null"
+      post: "echo 'NeoVim config linked'"
+```
+
+Per-store hooks run around that specific store's symlink operations. The `pre` hook runs before linking/unlinking, and `post` runs after. Commands are executed via `sh -c`.
+
+| Hook   | On failure                                |
+| ------ | ----------------------------------------- |
+| `pre`  | Aborts the operation for that store       |
+| `post` | Prints a warning, does not abort          |
+
+### Global hooks
+
+Place executable scripts in `.store/hooks/` to run before or after commands that operate on all stores:
+
+```
+.store/hooks/
+  pre-store       # runs before store/storeall linking
+  post-store      # runs after store/storeall linking
+  pre-remove      # runs before removeall unlinking
+  post-remove     # runs after removeall unlinking
+```
+
+Global hooks must be executable (`chmod +x`). Non-executable files are silently skipped.
+
+| Hook          | On failure                       |
+| ------------- | -------------------------------- |
+| `pre-store`   | Aborts the entire command        |
+| `pre-remove`  | Aborts the entire command        |
+| `post-store`  | Prints a warning, does not abort |
+| `post-remove` | Prints a warning, does not abort |
+
+### Execution order
+
+For a command like `store` (storeall):
+
+1. `.store/hooks/pre-store` (global)
+2. For each store entry:
+   - `hooks.pre` (per-store -- skip this store on failure)
+   - Create symlinks
+   - `hooks.post` (per-store -- warn on failure)
+3. `.store/hooks/post-store` (global)
+
+### Environment variables
+
+All hooks receive the following environment variables:
+
+| Variable       | Description                                           |
+| -------------- | ----------------------------------------------------- |
+| `STORE_ROOT`   | Absolute path to the repository root                  |
+| `STORE_ACTION` | `link` or `unlink`                                    |
+| `STORE_NAME`   | Store entry name (per-store hooks only)               |
+| `STORE_TARGET` | Target path for the store (per-store hooks only)      |
+
 ## Status Indicators
 
 | Status       | Meaning                                                                                                                                       |
@@ -482,6 +558,7 @@ Relative paths provided via `--target` are automatically converted to absolute p
 - **Symlinks are absolute:** When creating symlinks, source paths are resolved to absolute paths. This means symlinks work regardless of your working directory.
 - **Conflict resolution:** Before creating symlinks, `store` checks all target paths for conflicts. If files or directories already exist that aren't managed by store, it lists them and offers to move them into the store directory automatically. For directory conflicts, the contents are merged into the store directory. If any files already exist in the store directory, they are listed and a separate confirmation is required before creating `.bak` backups. Use `--force` to skip the backup confirmation.
 - **Broken symlink recovery:** If a symlink exists but points to a nonexistent path, `store` removes it and creates a fresh one pointing to the correct source.
+- **Hooks:** Per-store hooks (`hooks.pre`/`hooks.post` in config) run around individual store operations. Global hooks (executable scripts in `.store/hooks/`) run around commands that operate on all stores. Pre-hooks can abort the operation; post-hooks only warn on failure.
 - **File matching performance:** Explicit `files` entries are validated with a single stat call each (no directory walking). Simple glob patterns use `Glob` without recursive traversal. Only `**` patterns trigger a full directory walk, using the efficient `WalkDir` API.
 
 ## Troubleshooting
