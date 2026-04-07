@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/cush/store/internal/config"
+	"github.com/cush/store/internal/hooks"
 	"github.com/cush/store/internal/linker"
 	"github.com/cush/store/internal/matcher"
 )
@@ -58,6 +59,14 @@ func Store(root string, name string, entry config.StoreEntry) error {
 		return nil // No targets configured yet; skip silently.
 	}
 
+	// Resolve first target for hook env var.
+	targetStr := targets[0].Target
+
+	// Pre hook - abort this store on failure.
+	if err := hooks.RunEntry(root, name, targetStr, "link", "pre", entry.Hooks); err != nil {
+		return err
+	}
+
 	var errors []error
 	for _, te := range targets {
 		if err := StoreTarget(root, name, te); err != nil {
@@ -70,6 +79,11 @@ func Store(root string, name string, entry config.StoreEntry) error {
 			fmt.Printf("  error: %s\n", err)
 		}
 		return fmt.Errorf("store %q: %d target(s) failed", name, len(errors))
+	}
+
+	// Post hook - warn on failure, don't abort.
+	if err := hooks.RunEntry(root, name, targetStr, "link", "post", entry.Hooks); err != nil {
+		fmt.Printf("  warning: %s\n", err)
 	}
 
 	return nil
@@ -124,7 +138,7 @@ func StoreRemoveTarget(root string, name string, te config.TargetEntry) error {
 		switch status {
 		case linker.StatusLinked, linker.StatusBroken:
 			if err := os.Remove(target); err != nil {
-				return fmt.Errorf("store %q target %q: failed to remove symlnk: %w", name, te.Target, err)
+				return fmt.Errorf("store %q target %q: failed to remove symlink: %w", name, te.Target, err)
 			}
 		case linker.StatusMissing:
 			// Nothing at target; no symlink to remove.
@@ -182,6 +196,13 @@ func StoreRemove(root string, name string, entry config.StoreEntry) error {
 		return nil
 	}
 
+	targetStr := targets[0].Target
+
+	// Pre hook - abort this store on failure.
+	if err := hooks.RunEntry(root, name, targetStr, "unlink", "pre", entry.Hooks); err != nil {
+		return err
+	}
+
 	var errors []error
 	for _, te := range targets {
 		if err := StoreRemoveTarget(root, name, te); err != nil {
@@ -194,6 +215,11 @@ func StoreRemove(root string, name string, entry config.StoreEntry) error {
 			fmt.Printf("  error: %s\n", err)
 		}
 		return fmt.Errorf("store %q: %d target(s) failed to unlink", name, len(errors))
+	}
+
+	// Post hook - warn on failure, don't abort.
+	if err := hooks.RunEntry(root, name, targetStr, "unlink", "post", entry.Hooks); err != nil {
+		fmt.Printf("  warning: %s\n", err)
 	}
 
 	return nil
