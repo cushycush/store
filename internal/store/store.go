@@ -13,6 +13,31 @@ import (
 	"github.com/cushycush/store/internal/render"
 )
 
+// needsAutoPromotion checks if the source directory contains files/dirs
+// that match global ignore patterns, requiring promotion from whole-directory
+// to file-mode symlinking.
+func needsAutoPromotion(source string) bool {
+	for _, name := range []string{".store", ".git", ".gitignore", ".DS_Store"} {
+		if _, err := os.Lstat(filepath.Join(source, name)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldUseFileMode(source string, te config.TargetEntry) bool {
+	return te.HasFileMode() || len(te.Ignore) > 0 || needsAutoPromotion(source)
+}
+
+func resolveTargetMatches(source string, te config.TargetEntry) ([]string, error) {
+	files := te.Files
+	patterns := te.Patterns
+	if !te.HasFileMode() {
+		patterns = []string{"**/*"}
+	}
+	return matcher.Match(source, files, patterns, te.Ignore)
+}
+
 // StoreTarget creates symlinks for a single target entry within a store.
 func StoreTarget(root string, name string, te config.TargetEntry) error {
 	source := filepath.Join(root, name)
@@ -21,7 +46,8 @@ func StoreTarget(root string, name string, te config.TargetEntry) error {
 		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 	}
 
-	if !te.HasFileMode() {
+	useFileMode := shouldUseFileMode(source, te)
+	if !useFileMode {
 		if err := linker.Link(source, target); err != nil {
 			return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 		}
@@ -29,7 +55,7 @@ func StoreTarget(root string, name string, te config.TargetEntry) error {
 	}
 
 	// File mode: resolve matches and link each file.
-	files, err := matcher.Match(source, te.Files, te.Patterns)
+	files, err := resolveTargetMatches(source, te)
 	if err != nil {
 		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 	}
@@ -96,14 +122,15 @@ func StoreTargetWithSecrets(root string, name string, te config.TargetEntry, sec
 		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 	}
 
-	if !te.HasFileMode() {
+	useFileMode := shouldUseFileMode(source, te)
+	if !useFileMode {
 		if err := linker.Link(source, target); err != nil {
 			return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 		}
 		return nil
 	}
 
-	files, err := matcher.Match(source, te.Files, te.Patterns)
+	files, err := resolveTargetMatches(source, te)
 	if err != nil {
 		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 	}
@@ -210,7 +237,7 @@ func StoreAll(root string, cfg *config.Config) error {
 			errors = append(errors, err)
 		} else {
 			for _, te := range entry.ResolvedTargets() {
-				if te.HasFileMode() {
+				if shouldUseFileMode(filepath.Join(root, name), te) {
 					fmt.Printf("  %s -> %s (files)\n", name, te.Target)
 				} else {
 					fmt.Printf("  %s -> %s\n", name, te.Target)
@@ -242,7 +269,7 @@ func StoreAllWithSecrets(root string, cfg *config.Config, secrets map[string]str
 			errors = append(errors, err)
 		} else {
 			for _, te := range entry.ResolvedTargets() {
-				if te.HasFileMode() {
+				if shouldUseFileMode(filepath.Join(root, name), te) {
 					fmt.Printf("  %s -> %s (files)\n", name, te.Target)
 				} else {
 					fmt.Printf("  %s -> %s\n", name, te.Target)
@@ -270,7 +297,8 @@ func StoreRemoveTarget(root string, name string, te config.TargetEntry) error {
 		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 	}
 
-	if !te.HasFileMode() {
+	useFileMode := shouldUseFileMode(source, te)
+	if !useFileMode {
 		status, err := linker.Check(source, target)
 		if err != nil {
 			return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
@@ -292,7 +320,7 @@ func StoreRemoveTarget(root string, name string, te config.TargetEntry) error {
 	}
 
 	// File mode: resolve matches and unlink each file.
-	files, err := matcher.Match(source, te.Files, te.Patterns)
+	files, err := resolveTargetMatches(source, te)
 	if err != nil {
 		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 	}
@@ -465,7 +493,7 @@ func GetStatus(root string, name string, entry config.StoreEntry) []StatusInfo {
 			continue
 		}
 
-		if !te.HasFileMode() {
+		if !shouldUseFileMode(source, te) {
 			info := StatusInfo{
 				Name:   name,
 				Target: te.Target,
@@ -481,7 +509,7 @@ func GetStatus(root string, name string, entry config.StoreEntry) []StatusInfo {
 		}
 
 		// File mode: check each matched file.
-		files, err := matcher.Match(source, te.Files, te.Patterns)
+		files, err := resolveTargetMatches(source, te)
 		if err != nil {
 			results = append(results, StatusInfo{Name: name, Target: te.Target, Error: err})
 			continue

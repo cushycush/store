@@ -15,6 +15,7 @@ func TestMatch(t *testing.T) {
 		dirs     []string
 		inputs   []string
 		patterns []string
+		ignore   []string
 		want     []string
 		wantErr  string
 	}{
@@ -124,13 +125,53 @@ func TestMatch(t *testing.T) {
 			patterns: []string{"../*"},
 			wantErr:  "pattern \"../*\" escapes store directory",
 		},
+		{
+			name:   "explicit file matching global ignore is excluded",
+			files:  []string{".store/config.yaml", "keep.txt"},
+			inputs: []string{".store/config.yaml", "keep.txt"},
+			want:   []string{"keep.txt"},
+		},
+		{
+			name:     "glob excludes global ignore matches",
+			files:    []string{"keep.txt", "nested/keep.txt", ".store/config.yaml", ".git/config", ".DS_Store"},
+			patterns: []string{"**/*"},
+			want:     []string{"keep.txt", "nested/keep.txt"},
+		},
+		{
+			name:     "user ignore excludes directory contents",
+			files:    []string{"scratch/notes.txt", "keep.txt"},
+			patterns: []string{"**/*"},
+			ignore:   []string{"scratch/"},
+			want:     []string{"keep.txt"},
+		},
+		{
+			name:     "user and global ignore both apply",
+			files:    []string{"scratch/notes.txt", ".git/config", "keep.txt"},
+			patterns: []string{"**/*"},
+			ignore:   []string{"scratch/"},
+			want:     []string{"keep.txt"},
+		},
+		{
+			name:     "empty ignore list keeps non global files",
+			files:    []string{"keep.txt", "nested/keep.txt", ".DS_Store"},
+			patterns: []string{"**/*"},
+			ignore:   []string{},
+			want:     []string{"keep.txt", "nested/keep.txt"},
+		},
+		{
+			name:     "ignore doublestar pattern excludes matching files",
+			files:    []string{"keep.txt", "nested/backup.bak", "deep/also.bak"},
+			patterns: []string{"**/*"},
+			ignore:   []string{"**/*.bak"},
+			want:     []string{"keep.txt"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			storeDir := buildTempStoreDir(t, tt.files, tt.dirs)
 
-			got, err := Match(storeDir, tt.inputs, tt.patterns)
+			got, err := Match(storeDir, tt.inputs, tt.patterns, tt.ignore)
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("Match() error = nil, want %q", tt.wantErr)
