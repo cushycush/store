@@ -1,0 +1,113 @@
+version: 2
+
+project_name: store
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: store
+    main: ./cmd/store
+    binary: store
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+# --- Linux packages (deb, rpm) via nFPM ---
+nfpms:
+  - id: store
+    package_name: store
+    homepage: https://github.com/cushycush/store
+    maintainer: cushycush
+    description: A simpler alternative to GNU Stow for managing dotfile symlinks.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    contents:
+      - src: LICENSE
+        dst: /usr/share/licenses/store/LICENSE
+
+# --- Homebrew tap ---
+homebrew_casks:
+  - name: store
+    homepage: https://github.com/cushycush/store
+    description: A simpler alternative to GNU Stow for managing dotfile symlinks.
+    license: MIT
+    binaries:
+      - store
+    repository:
+      owner: cushycush
+      name: homebrew-store
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+
+# --- Scoop bucket ---
+scoops:
+  - name: store
+    homepage: https://github.com/cushycush/store
+    description: A simpler alternative to GNU Stow for managing dotfile symlinks.
+    license: MIT
+    repository:
+      owner: cushycush
+      name: scoop-store
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+
+# --- AUR (Arch Linux) ---
+aurs:
+  - name: store-bin
+    homepage: https://github.com/cushycush/store
+    description: A simpler alternative to GNU Stow for managing dotfile symlinks.
+    license: MIT
+    maintainers:
+      - cushycush
+    private_key: "{{ .Env.AUR_KEY }}"
+    git_url: "ssh://aur@aur.archlinux.org/store-bin.git"
+    package: |-
+      install -Dm755 "./store" "${pkgdir}/usr/bin/store"
+      install -Dm644 "./LICENSE" "${pkgdir}/usr/share/licenses/store/LICENSE"
+
+# --- Nix User Repository ---
+nix:
+  - name: store
+    homepage: https://github.com/cushycush/store
+    description: A simpler alternative to GNU Stow for managing dotfile symlinks.
+    license: mit
+    repository:
+      owner: cushycush
+      name: nur-packages
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"

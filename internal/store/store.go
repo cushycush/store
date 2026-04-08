@@ -10,6 +10,7 @@ import (
 	"github.com/cushycush/store/internal/hooks"
 	"github.com/cushycush/store/internal/linker"
 	"github.com/cushycush/store/internal/matcher"
+	"github.com/cushycush/store/internal/render"
 )
 
 // StoreTarget creates symlinks for a single target entry within a store.
@@ -28,6 +29,80 @@ func StoreTarget(root string, name string, te config.TargetEntry) error {
 	}
 
 	// File mode: resolve matches and link each file.
+	files, err := matcher.Match(source, te.Files, te.Patterns)
+	if err != nil {
+		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
+	}
+
+	var errors []error
+	for _, rel := range files {
+		src := filepath.Join(source, rel)
+		tgt := filepath.Join(target, rel)
+		if err := linker.Link(src, tgt); err != nil {
+			errors = append(errors, fmt.Errorf("  %s: %w", rel, err))
+		}
+	}
+
+	if len(errors) > 0 {
+		for _, err := range errors {
+			fmt.Printf("  error: %s\n", err)
+		}
+		return fmt.Errorf("store %q target %q: %d file(s) failed", name, te.Target, len(errors))
+	}
+
+	return nil
+}
+
+// resolveSource returns the effective source directory for a store.
+// If secrets are provided and the store contains template files,
+// it prepares a staging directory with rendered files and returns that path.
+// Otherwise returns the original source path in the repo.
+func resolveSource(root, name string, secrets map[string]string) (string, error) {
+	sourceDir := filepath.Join(root, name)
+	if len(secrets) == 0 {
+		return sourceDir, nil
+	}
+
+	needsRendering, err := render.NeedsRendering(sourceDir)
+	if err != nil {
+		return "", fmt.Errorf("store %q: check rendering: %w", name, err)
+	}
+	if !needsRendering {
+		return sourceDir, nil
+	}
+
+	stagingBase, err := render.StagingDir(root)
+	if err != nil {
+		return "", fmt.Errorf("store %q: staging dir: %w", name, err)
+	}
+
+	stagingSource := filepath.Join(stagingBase, name)
+	if _, err := render.PrepareStaging(sourceDir, stagingSource, secrets); err != nil {
+		return "", fmt.Errorf("store %q: prepare staging: %w", name, err)
+	}
+
+	return stagingSource, nil
+}
+
+// StoreTargetWithSecrets is like StoreTarget but renders template files before linking.
+func StoreTargetWithSecrets(root string, name string, te config.TargetEntry, secrets map[string]string) error {
+	source, err := resolveSource(root, name, secrets)
+	if err != nil {
+		return err
+	}
+
+	target, err := config.ExpandHome(te.Target)
+	if err != nil {
+		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
+	}
+
+	if !te.HasFileMode() {
+		if err := linker.Link(source, target); err != nil {
+			return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
+		}
+		return nil
+	}
+
 	files, err := matcher.Match(source, te.Files, te.Patterns)
 	if err != nil {
 		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
@@ -89,6 +164,40 @@ func Store(root string, name string, entry config.StoreEntry) error {
 	return nil
 }
 
+// StoreWithSecrets is like Store but renders template files before linking.
+func StoreWithSecrets(root string, name string, entry config.StoreEntry, secrets map[string]string) error {
+	targets := entry.ResolvedTargets()
+	if len(targets) == 0 {
+		return nil // No targets configured yet; skip silently.
+	}
+
+	targetStr := targets[0].Target
+
+	if err := hooks.RunEntry(root, name, targetStr, "link", "pre", entry.Hooks); err != nil {
+		return err
+	}
+
+	var errors []error
+	for _, te := range targets {
+		if err := StoreTargetWithSecrets(root, name, te, secrets); err != nil {
+			errors = append(errors, err)
+		}
+	}
+
+	if len(errors) > 0 {
+		for _, err := range errors {
+			fmt.Printf("  error: %s\n", err)
+		}
+		return fmt.Errorf("store %q: %d target(s) failed", name, len(errors))
+	}
+
+	if err := hooks.RunEntry(root, name, targetStr, "link", "post", entry.Hooks); err != nil {
+		fmt.Printf("  warning: %s\n", err)
+	}
+
+	return nil
+}
+
 // StoreAll creates symlinks for all stores in the config.
 func StoreAll(root string, cfg *config.Config) error {
 	if len(cfg.Stores) == 0 {
@@ -98,6 +207,38 @@ func StoreAll(root string, cfg *config.Config) error {
 	var errors []error
 	for name, entry := range cfg.Stores {
 		if err := Store(root, name, entry); err != nil {
+			errors = append(errors, err)
+		} else {
+			for _, te := range entry.ResolvedTargets() {
+				if te.HasFileMode() {
+					fmt.Printf("  %s -> %s (files)\n", name, te.Target)
+				} else {
+					fmt.Printf("  %s -> %s\n", name, te.Target)
+				}
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		fmt.Println()
+		for _, err := range errors {
+			fmt.Printf("  error: %s\n", err)
+		}
+		return fmt.Errorf("%d store(s) failed", len(errors))
+	}
+
+	return nil
+}
+
+// StoreAllWithSecrets is like StoreAll but renders template files before linking.
+func StoreAllWithSecrets(root string, cfg *config.Config, secrets map[string]string) error {
+	if len(cfg.Stores) == 0 {
+		return fmt.Errorf("no stores defined in config")
+	}
+
+	var errors []error
+	for name, entry := range cfg.Stores {
+		if err := StoreWithSecrets(root, name, entry, secrets); err != nil {
 			errors = append(errors, err)
 		} else {
 			for _, te := range entry.ResolvedTargets() {
