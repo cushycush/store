@@ -94,6 +94,12 @@ func (e StoreEntry) Validate() error {
 			}
 		}
 	}
+
+	// Check if this entry has no targets at all (YAML null parsed as empty string)
+	if e.Target == "" && len(e.Targets) == 0 {
+		fmt.Fprintf(os.Stderr, "warning: store entry has no target configured -- did you mean `target: \"~\"`?\n")
+	}
+
 	return nil
 }
 

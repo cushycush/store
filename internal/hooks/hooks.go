@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/cushycush/store/internal/config"
 )
 
 // RunGlobal executes a global hook script at .store/hooks/<hookName> if it
@@ -44,7 +46,7 @@ func RunGlobal(root, hookName, action string) error {
 
 // RunEntry executes a per-store hook command (pre or post) via "sh -c"
 // Returns nil if hooks is nil or the requested phase is empty.
-func RunEntry(root, name, target, action, phase string, h *HookEntry) error {
+func RunEntry(root, name, target, action, phase string, h *config.HookEntry) error {
 	if h == nil {
 		return nil
 	}
