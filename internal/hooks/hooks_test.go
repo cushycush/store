@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/cushycush/store/internal/config"
+	"github.com/cushycush/store/internal/platform"
 )
 
 func TestRunGlobal(t *testing.T) {
@@ -31,6 +32,7 @@ func TestRunGlobal(t *testing.T) {
 			check: func(t *testing.T, root string) {
 				assertFileContains(t, filepath.Join(root, "hook-env.txt"), "STORE_ROOT="+root)
 				assertFileContains(t, filepath.Join(root, "hook-env.txt"), "STORE_ACTION="+action)
+				assertPlatformEnvVars(t, filepath.Join(root, "hook-env.txt"))
 				assertTrimmedFileEquals(t, filepath.Join(root, "hook-pwd.txt"), root)
 			},
 		},
@@ -113,6 +115,7 @@ func TestRunEntry(t *testing.T) {
 				assertFileContains(t, filepath.Join(root, "hook-env.txt"), "STORE_NAME="+name)
 				assertFileContains(t, filepath.Join(root, "hook-env.txt"), "STORE_TARGET="+target)
 				assertFileContains(t, filepath.Join(root, "hook-env.txt"), "STORE_ACTION="+action)
+				assertPlatformEnvVars(t, filepath.Join(root, "hook-env.txt"))
 			},
 		},
 		{
@@ -272,5 +275,13 @@ func assertNotExists(t *testing.T, path string) {
 
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("expected %q to not exist, got err = %v", path, err)
+	}
+}
+
+func assertPlatformEnvVars(t *testing.T, path string) {
+	t.Helper()
+
+	for _, envVar := range platform.Detect().EnvVars() {
+		assertFileContains(t, path, envVar)
 	}
 }

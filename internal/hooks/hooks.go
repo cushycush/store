@@ -7,12 +7,14 @@ import (
 	"path/filepath"
 
 	"github.com/cushycush/store/internal/config"
+	"github.com/cushycush/store/internal/platform"
 )
 
 // RunGlobal executes a global hook script at .store/hooks/<hookName> if it
 // exists and is executable. Returns nil if the hook does not exist.
 func RunGlobal(root, hookName, action string) error {
 	path := filepath.Join(root, ".store", "hooks", hookName)
+	info := platform.Detect()
 
 	fi, err := os.Stat(path)
 
@@ -36,6 +38,7 @@ func RunGlobal(root, hookName, action string) error {
 		"STORE_ROOT="+root,
 		"STORE_ACTION="+action,
 	)
+	cmd.Env = append(cmd.Env, info.EnvVars()...)
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("hook %q failed: %w", hookName, err)
@@ -50,6 +53,8 @@ func RunEntry(root, name, target, action, phase string, h *config.HookEntry) err
 	if h == nil {
 		return nil
 	}
+
+	info := platform.Detect()
 
 	var hookCmd string
 	switch phase {
@@ -75,6 +80,7 @@ func RunEntry(root, name, target, action, phase string, h *config.HookEntry) err
 		"STORE_TARGET="+target,
 		"STORE_ACTION="+action,
 	)
+	cmd.Env = append(cmd.Env, info.EnvVars()...)
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("hook %s (%s) failed: %w", phase, name, err)
