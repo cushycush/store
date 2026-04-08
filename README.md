@@ -63,7 +63,7 @@ go install github.com/cush/store/cmd/store@latest
 ```sh
 git clone https://github.com/cush/store.git
 cd store
-make build VERSION=0.5.1
+make build VERSION=0.6.0
 # Move the binary somewhere in your PATH
 mv store /usr/local/bin/
 ```
@@ -337,20 +337,20 @@ Prints the current version.
 
 ```sh
 $ store version
-store version 0.5.1
+store version 0.6.0
 ```
 
 The `--version` flag also works:
 
 ```sh
 $ store --version
-store version 0.5.1
+store version 0.6.0
 ```
 
 When built without a version (e.g., `go build ./cmd/store`), the version defaults to `dev`. Use the Makefile to build with a specific version:
 
 ```sh
-make build VERSION=0.5.1
+make build VERSION=0.6.0
 ```
 
 ### `store status [name]`
