@@ -310,7 +310,7 @@ func GetStatus(root string, name string, entry config.StoreEntry) []StatusInfo {
 	if len(targets) == 0 {
 		return []StatusInfo{{
 			Name:  name,
-			Error: fmt.Errorf("no target configured"),
+			Error: fmt.Errorf("no target configured -- did you mean `target: \"~\"`?"),
 		}}
 	}
 
