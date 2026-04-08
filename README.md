@@ -49,6 +49,7 @@ All configuration lives in a single `.store/config.yaml` file that you commit al
 | **Multiple targets**     | Requires separate packages per target location                | One store can deploy to multiple target paths                                 |
 | **Conflict handling**    | Refuses to proceed; user must manually move files             | Detects conflicts, offers to move existing files into the store automatically |
 | **Setup on new machine** | Run `stow` per package from the correct parent directory      | Run `store` from anywhere in the repo                                         |
+| **Secret management**    | No built-in support                                           | Encrypted secrets with template rendering                                     |
 
 ## Installation
 
@@ -365,12 +366,56 @@ $ store status
   shells               config.fish          [linked]   ~/.config/fish/config.fish
   shells               config.nu            [linked]   ~/.config/nushell/config.nu
   git                  [conflict] ~/.config/git
-```
+
+### `store secret set <name> [value]`
+
+Sets an encrypted secret. If value is omitted, prompts for it with hidden input.
 
 ```sh
-$ store status nvim
-  nvim                 [linked]   ~/.config/nvim
+# Prompt for value
+$ store secret set github_token
+Enter passphrase: ****
+Enter secret value: ****
+
+# Provide value as argument
+$ store secret set api_key "your-secret-value"
+Enter passphrase: ****
 ```
+
+### `store secret get <name>`
+
+Prints the decrypted value of a secret.
+
+```sh
+$ store secret get github_token
+Enter passphrase: ****
+your-secret-value
+```
+
+### `store secret rm <name>`
+
+Removes a secret from the encrypted store.
+
+```sh
+$ store secret rm github_token
+Enter passphrase: ****
+Removed secret github_token
+```
+
+### `store secret list`
+
+Lists all secret names (not values), sorted alphabetically.
+
+```sh
+$ store secret list
+Enter passphrase: ****
+api_key
+github_token
+```
+
+All secret commands prompt for a passphrase or read it from the `STORE_PASSPHRASE` environment variable.
+
+### `store status [name]`
 
 ## Config Format
 
@@ -422,6 +467,8 @@ stores:
 ```
 
 Using both `target` and `targets` on the same store entry is invalid.
+
+Files containing `{{ secret "name" }}` placeholders are automatically detected and rendered during store operations. No configuration changes are needed.
 
 Each entry maps a store name (a directory in your repo) to one or more target paths (where symlinks are created).
 
@@ -542,6 +589,77 @@ All hooks receive the following environment variables:
 | `STORE_ACTION` | `link` or `unlink`                               |
 | `STORE_NAME`   | Store entry name (per-store hooks only)          |
 | `STORE_TARGET` | Target path for the store (per-store hooks only) |
+
+## Secrets
+
+Config files often contain secrets like API keys, tokens, or passwords. `store` encrypts these secrets so your dotfiles repository can remain public while keeping sensitive data secure.
+
+### Template syntax
+
+Use the `{{ secret "name" }}` placeholder in any file within a store. For example, a `.gitconfig` template:
+
+```
+[github]
+	token = {{ secret "github_token" }}
+```
+
+### How it works
+
+- Secrets are stored encrypted in `.store/secrets.enc` using argon2id for key derivation and XChaCha20-Poly1305 for authenticated encryption.
+- When `store` creates symlinks, files containing `{{ secret "..." }}` are rendered with their decrypted values.
+- Rendered files are stored in a local staging directory and symlinked from there.
+- Non-template files are symlinked directly from the repository as usual.
+- The passphrase is read from the `STORE_PASSPHRASE` environment variable or prompted interactively with hidden input.
+
+### Quick start workflow
+
+1. Add a secret to the encrypted store:
+
+```sh
+$ store secret set github_token
+Enter passphrase: ****
+Enter secret value: ****
+```
+
+2. Use the secret in a config file:
+
+```sh
+$ echo 'token = {{ secret "github_token" }}' > git/.gitconfig
+```
+
+3. Run `store` to render templates and create symlinks:
+
+```sh
+$ store
+Enter passphrase: ****
+Storing all stores:
+  git -> ~/.config/git (files)
+```
+
+4. On a new machine, clone and restore:
+
+```sh
+$ git clone ~/dotfiles && cd ~/dotfiles
+$ store
+Enter passphrase: ****
+```
+
+### Environment variable
+
+Set `STORE_PASSPHRASE` to avoid interactive prompts. This is useful for scripts or CI/CD environments.
+
+```sh
+export STORE_PASSPHRASE="your-secure-passphrase"
+store
+```
+
+### Staging directory
+
+Rendered files are stored at `$XDG_STATE_HOME/store/<hash>/`, which defaults to `~/.local/state/store/`. These files are local to the machine and should not be committed to your repository.
+
+### Security note
+
+The encrypted secrets file (`.store/secrets.enc`) is safe to commit to your repository. It uses industry-standard encryption to protect your data.
 
 ## Status Indicators
 
