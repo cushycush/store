@@ -337,11 +337,66 @@ the entire field. Use --clear-files or --clear-patterns to remove those fields.`
 
 	secretCmd.AddCommand(secretSetCmd, secretGetCmd, secretRmCmd, secretListCmd)
 
-	rootCmd.AddCommand(initCmd, addCmd, modifyCmd, removeCmd, removeAllCmd, statusCmd, versionCmd, targetCmd, secretCmd)
+	completionCmd := &cobra.Command{
+		Use:   "completion [bash|zsh|fish|powershell]",
+		Short: "Generate shell completion script",
+		Long: `Generate a completion script for your shell. Add the output to your
+shell's startup file to enable tab completion.
+
+  bash:       store completion bash > ~/.local/share/bash-completion/completions/store
+  zsh:        store completion zsh > "${fpath[1]}/_store"
+  fish:       store completion fish > ~/.config/fish/completions/store.fish
+  powershell: store completion powershell | Out-String | Invoke-Expression`,
+		Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+		ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "bash":
+				return rootCmd.GenBashCompletion(os.Stdout)
+			case "zsh":
+				return rootCmd.GenZshCompletion(os.Stdout)
+			case "fish":
+				return rootCmd.GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				return rootCmd.GenPowerShellCompletionWithDesc(os.Stdout)
+			default:
+				return fmt.Errorf("unsupported shell: %s", args[0])
+			}
+		},
+	}
+
+	for _, cmd := range []*cobra.Command{modifyCmd, removeCmd, statusCmd, targetAddCmd, targetRemoveCmd, targetModifyCmd} {
+		cmd.ValidArgsFunction = completeStoreNames
+	}
+
+	rootCmd.AddCommand(initCmd, addCmd, modifyCmd, removeCmd, removeAllCmd, statusCmd, versionCmd, targetCmd, secretCmd, completionCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+func completeStoreNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	_ = cmd
+	_ = toComplete
+
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	root, err := config.FindRoot()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	cfg, err := config.Load(root)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	names := make([]string, 0, len(cfg.Stores))
+	for name := range cfg.Stores {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
