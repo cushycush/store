@@ -115,6 +115,18 @@ The old symlinks are removed before applying changes.`,
 		RunE:  runStatus,
 	}
 
+	var diffOnly []string
+
+	diffCmd := &cobra.Command{
+		Use:   "diff",
+		Short: "Preview what store would change",
+		Long:  "Shows what symlinks would be created, replaced, or conflict without making changes.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runDiff(cmd, args, diffOnly)
+		},
+	}
+	diffCmd.Flags().StringArrayVar(&diffOnly, "only", nil, "only diff specific entries by name (repeatable)")
+
 	versionCmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print the version",
@@ -377,7 +389,7 @@ shell's startup file to enable tab completion.
 		RunE:  runDoctor,
 	}
 
-	rootCmd.AddCommand(initCmd, addCmd, modifyCmd, removeCmd, removeAllCmd, statusCmd, versionCmd, targetCmd, secretCmd, completionCmd, doctorCmd)
+	rootCmd.AddCommand(initCmd, addCmd, modifyCmd, removeCmd, removeAllCmd, statusCmd, diffCmd, versionCmd, targetCmd, secretCmd, completionCmd, doctorCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -496,6 +508,131 @@ func formatDoctorSummary(total, errors, warnings, infos int) string {
 	}
 
 	return fmt.Sprintf("%s found (%s)", pluralizeCount(total, "issue", "issues"), strings.Join(parts, ", "))
+}
+
+func runDiff(_ *cobra.Command, _ []string, diffOnly []string) error {
+	root, err := config.FindRoot()
+	if err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(root)
+	if err != nil {
+		return err
+	}
+
+	cfg.Stores = selectStores(cfg.Stores, diffOnly)
+	selectedStores := cfg.Stores
+	filteredStores := filterStoresByPlatform(selectedStores, platform.Detect())
+	printPlatformSkippedStores(selectedStores, filteredStores)
+	cfg.Stores = filteredStores
+
+	rows, summary := buildDiffReport(storeops.GetStatusAll(root, cfg))
+	printDiffReport(rows)
+	fmt.Println()
+	fmt.Println(formatDiffSummary(summary))
+	return nil
+}
+
+type diffRow struct {
+	Name    string
+	Display string
+	Label   string
+	Error   error
+}
+
+type diffSummary struct {
+	OK       int
+	Create   int
+	Conflict int
+	Replace  int
+	Error    int
+}
+
+func buildDiffReport(results []storeops.StatusInfo) ([]diffRow, diffSummary) {
+	rows := make([]diffRow, 0, len(results))
+	summary := diffSummary{}
+
+	for _, info := range results {
+		row := diffRow{Name: info.Name, Display: diffDisplay(info), Error: info.Error}
+
+		switch {
+		case info.Error != nil:
+			row.Label = "error"
+			summary.Error++
+		case info.Status == linker.StatusLinked:
+			row.Label = "ok"
+			summary.OK++
+		case info.Status == linker.StatusMissing:
+			row.Label = "create"
+			summary.Create++
+		case info.Status == linker.StatusBroken:
+			row.Label = "replace"
+			summary.Replace++
+		case info.Status == linker.StatusConflict:
+			row.Label = "conflict"
+			summary.Conflict++
+		default:
+			row.Label = "error"
+			row.Error = fmt.Errorf("unknown status: %v", info.Status)
+			summary.Error++
+		}
+
+		rows = append(rows, row)
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Name != rows[j].Name {
+			return rows[i].Name < rows[j].Name
+		}
+		if rows[i].Display != rows[j].Display {
+			return rows[i].Display < rows[j].Display
+		}
+		return rows[i].Label < rows[j].Label
+	})
+
+	return rows, summary
+}
+
+func diffDisplay(info storeops.StatusInfo) string {
+	if info.File != "" {
+		return fmt.Sprintf("%s → %s", info.File, info.Target)
+	}
+	return info.Target
+}
+
+func printDiffReport(rows []diffRow) {
+	nameWidth := len("store")
+	displayWidth := len("path")
+	for _, row := range rows {
+		if len(row.Name) > nameWidth {
+			nameWidth = len(row.Name)
+		}
+		if len(row.Display) > displayWidth {
+			displayWidth = len(row.Display)
+		}
+	}
+
+	for _, row := range rows {
+		if row.Error != nil {
+			fmt.Printf("  %-*s %-*s [%-8s] %v\n", nameWidth, row.Name, displayWidth, row.Display, row.Label, row.Error)
+			continue
+		}
+		fmt.Printf("  %-*s %-*s [%-8s]\n", nameWidth, row.Name, displayWidth, row.Display, row.Label)
+	}
+}
+
+func formatDiffSummary(summary diffSummary) string {
+	parts := []string{
+		fmt.Sprintf("%d ok", summary.OK),
+		fmt.Sprintf("%d to create", summary.Create),
+		pluralizeCount(summary.Conflict, "conflict", "conflicts"),
+		fmt.Sprintf("%d to replace", summary.Replace),
+	}
+	if summary.Error > 0 {
+		parts = append(parts, pluralizeCount(summary.Error, "error", "errors"))
+	}
+	return fmt.Sprintf("Summary: %s", strings.Join(parts, ", "))
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
@@ -967,6 +1104,38 @@ func filterStoresByPlatform(stores map[string]config.StoreEntry, info platform.I
 		}
 	}
 	return filtered
+}
+
+func selectStores(stores map[string]config.StoreEntry, names []string) map[string]config.StoreEntry {
+	if len(names) == 0 {
+		return stores
+	}
+
+	filtered := make(map[string]config.StoreEntry)
+	for _, name := range names {
+		entry, exists := stores[name]
+		if !exists {
+			fmt.Printf("  warning: store %q not found in config\n", name)
+			continue
+		}
+		filtered[name] = entry
+	}
+
+	return filtered
+}
+
+func printPlatformSkippedStores(selectedStores, filteredStores map[string]config.StoreEntry) {
+	skippedNames := make([]string, 0)
+	for name := range selectedStores {
+		if _, ok := filteredStores[name]; !ok {
+			skippedNames = append(skippedNames, name)
+		}
+	}
+
+	sort.Strings(skippedNames)
+	for _, name := range skippedNames {
+		fmt.Printf("  skipping %s (platform mismatch)\n", name)
+	}
 }
 
 func pluralizeCount(n int, singular, plural string) string {
