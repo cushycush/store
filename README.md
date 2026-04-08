@@ -50,6 +50,7 @@ All configuration lives in a single `.store/config.yaml` file that you commit al
 | **Conflict handling**    | Refuses to proceed; user must manually move files             | Detects conflicts, offers to move existing files into the store automatically |
 | **Setup on new machine** | Run `stow` per package from the correct parent directory      | Run `store` from anywhere in the repo                                         |
 | **Secret management**    | No built-in support                                           | Encrypted secrets with template rendering                                     |
+| **Platform conditionals** | No built-in support                                           | `when:` clause for OS/arch/distro/hostname filtering                          |
 
 ## Installation
 
@@ -481,6 +482,7 @@ Each entry maps a store name (a directory in your repo) to one or more target pa
 | `target`   | No       | Where symlinks are created. Without a target, the entry is saved but no symlinks are created. |
 | `files`    | No       | Explicit list of files to symlink individually.                                               |
 | `patterns` | No       | Glob patterns to match files. Supports `*`, `?`, `[...]`, and `**` for recursive matching.    |
+| `when`     | No       | Platform conditions for this store. See [Platform Conditionals](#platform-conditionals).      |
 | `hooks`    | No       | Pre/post shell commands to run around store operations. See [Hooks](#hooks).                  |
 
 #### Multi-target fields
@@ -589,6 +591,13 @@ All hooks receive the following environment variables:
 | `STORE_ACTION` | `link` or `unlink`                               |
 | `STORE_NAME`   | Store entry name (per-store hooks only)          |
 | `STORE_TARGET` | Target path for the store (per-store hooks only) |
+| `STORE_OS`     | Operating system (linux, darwin, windows)        |
+| `STORE_ARCH`   | CPU architecture (amd64, arm64)                  |
+| `STORE_DISTRO` | Distribution (ubuntu, arch, macos, etc.)         |
+| `STORE_DISTRO_VERSION` | Distribution version (24.04, rolling, etc.) |
+| `STORE_HOSTNAME` | Machine hostname                               |
+| `STORE_WSL`    | Whether running in WSL (true/false)              |
+| `STORE_SHELL`   | Current shell (zsh, bash, fish, nu)              |
 
 ## Secrets
 
@@ -660,6 +669,109 @@ Rendered files are stored at `$XDG_STATE_HOME/store/<hash>/`, which defaults to 
 ### Security note
 
 The encrypted secrets file (`.store/secrets.enc`) is safe to commit to your repository. It uses industry-standard encryption to protect your data.
+
+## Platform Conditionals
+
+Different machines often need different configurations. The `when:` clause lets you target stores to specific platforms.
+
+### Config syntax
+
+Add the `when:` field to any store entry to define platform requirements:
+
+```yaml
+stores:
+  # Linux-only store
+  apt-configs:
+    target: ~/.config/apt
+    when:
+      os: linux
+
+  # macOS-only store
+  brew-configs:
+    target: ~/.config/brew
+    when:
+      os: darwin
+
+  # Distro-specific store
+  ubuntu-packages:
+    target: ~/scripts
+    files:
+      - install-ubuntu.sh
+    when:
+      distro: ubuntu
+
+  # Hostname-specific
+  work-scripts:
+    target: ~/work
+    when:
+      hostname: work-laptop
+
+  # WSL-specific
+  wsl-tools:
+    target: ~/.local/bin
+    when:
+      wsl: true
+
+  # Combined conditions (Linux + arm64)
+  raspberry-pi:
+    target: ~/pi-configs
+    when:
+      os: linux
+      arch: arm64
+```
+
+### Available conditions
+
+| Field            | Description                                      | Possible Values                               |
+| ---------------- | ------------------------------------------------ | --------------------------------------------- |
+| `os`             | Operating system                                 | `linux`, `darwin`, `windows`                  |
+| `arch`           | CPU architecture                                 | `amd64`, `arm64`, `arm`, etc.                 |
+| `distro`         | Linux distribution or OS name                    | `ubuntu`, `fedora`, `arch`, `macos`, `windows` |
+| `distro_version` | Version of the distribution                      | `24.04`, `rolling`, etc.                      |
+| `hostname`       | Machine hostname                                 | Any valid hostname                            |
+| `shell`          | Current shell                                    | `zsh`, `bash`, `fish`, `nu`                   |
+| `wsl`            | Whether running in Windows Subsystem for Linux | `true`, `false`                               |
+
+### Matching behavior
+
+- **AND logic**: All specified fields must match for the store to be applied.
+- **Unset fields**: Any field not specified matches everything.
+- **Default**: Stores without a `when:` clause always apply.
+- **Filtering**: Non-matching stores are silently skipped during `store` and `store status` operations.
+
+### Example multi-platform setup
+
+```yaml
+stores:
+  # Common configs for all machines
+  common:
+    target: "~"
+    files:
+      - .gitconfig
+      - .vimrc
+
+  # Linux-specific shell configs
+  linux-shell:
+    target: "~"
+    files:
+      - .bashrc
+    when:
+      os: linux
+
+  # macOS-specific shell configs
+  macos-shell:
+    target: "~"
+    files:
+      - .zshrc
+    when:
+      os: darwin
+
+  # Work-only scripts
+  work-tools:
+    target: "~/work"
+    when:
+      hostname: work-laptop
+```
 
 ## Status Indicators
 
