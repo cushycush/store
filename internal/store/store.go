@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/cush/store/internal/config"
-	"github.com/cush/store/internal/hooks"
-	"github.com/cush/store/internal/linker"
-	"github.com/cush/store/internal/matcher"
+	"github.com/cushycush/store/internal/config"
+	"github.com/cushycush/store/internal/hooks"
+	"github.com/cushycush/store/internal/linker"
+	"github.com/cushycush/store/internal/matcher"
 )
 
 // StoreTarget creates symlinks for a single target entry within a store.
@@ -310,7 +310,7 @@ func GetStatus(root string, name string, entry config.StoreEntry) []StatusInfo {
 	if len(targets) == 0 {
 		return []StatusInfo{{
 			Name:  name,
-			Error: fmt.Errorf("no target configured"),
+			Error: fmt.Errorf("no target configured -- did you mean `target: \"~\"`?"),
 		}}
 	}
 

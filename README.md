@@ -63,7 +63,7 @@ go install github.com/cush/store/cmd/store@latest
 ```sh
 git clone https://github.com/cush/store.git
 cd store
-make build VERSION=0.5.0
+make build VERSION=0.5.1
 # Move the binary somewhere in your PATH
 mv store /usr/local/bin/
 ```
@@ -337,20 +337,20 @@ Prints the current version.
 
 ```sh
 $ store version
-store version 0.5.0
+store version 0.5.1
 ```
 
 The `--version` flag also works:
 
 ```sh
 $ store --version
-store version 0.5.0
+store version 0.5.1
 ```
 
 When built without a version (e.g., `go build ./cmd/store`), the version defaults to `dev`. Use the Makefile to build with a specific version:
 
 ```sh
-make build VERSION=0.5.0
+make build VERSION=0.5.1
 ```
 
 ### `store status [name]`
@@ -434,7 +434,7 @@ Each entry maps a store name (a directory in your repo) to one or more target pa
 | `target`   | No       | Where symlinks are created. Without a target, the entry is saved but no symlinks are created. |
 | `files`    | No       | Explicit list of files to symlink individually.                                               |
 | `patterns` | No       | Glob patterns to match files. Supports `*`, `?`, `[...]`, and `**` for recursive matching.    |
-| `hooks`    | No       | Pre/post shell commands to run around store operations. See [Hooks](#hooks).                   |
+| `hooks`    | No       | Pre/post shell commands to run around store operations. See [Hooks](#hooks).                  |
 
 #### Multi-target fields
 
@@ -467,7 +467,7 @@ Patterns use standard glob syntax with recursive matching support:
 
 ### Target Path Formats
 
-- `~` prefix -- expanded to the user's home directory (e.g., `~/.config/nvim`). Portable across machines.
+- `~` prefix -- expanded to the user's home directory (e.g., `~/.config/nvim`). **Must be quoted in YAML** (`target: "~"`) to avoid being interpreted as null by the YAML parser. Portable across machines.
 - Absolute paths -- used as-is (e.g., `/home/user/.config/nvim`).
 
 Relative paths provided via `--target` are automatically converted to absolute paths.
@@ -495,10 +495,10 @@ stores:
 
 Per-store hooks run around that specific store's symlink operations. The `pre` hook runs before linking/unlinking, and `post` runs after. Commands are executed via `sh -c`.
 
-| Hook   | On failure                                |
-| ------ | ----------------------------------------- |
-| `pre`  | Aborts the operation for that store       |
-| `post` | Prints a warning, does not abort          |
+| Hook   | On failure                          |
+| ------ | ----------------------------------- |
+| `pre`  | Aborts the operation for that store |
+| `post` | Prints a warning, does not abort    |
 
 ### Global hooks
 
@@ -536,12 +536,12 @@ For a command like `store` (storeall):
 
 All hooks receive the following environment variables:
 
-| Variable       | Description                                           |
-| -------------- | ----------------------------------------------------- |
-| `STORE_ROOT`   | Absolute path to the repository root                  |
-| `STORE_ACTION` | `link` or `unlink`                                    |
-| `STORE_NAME`   | Store entry name (per-store hooks only)               |
-| `STORE_TARGET` | Target path for the store (per-store hooks only)      |
+| Variable       | Description                                      |
+| -------------- | ------------------------------------------------ |
+| `STORE_ROOT`   | Absolute path to the repository root             |
+| `STORE_ACTION` | `link` or `unlink`                               |
+| `STORE_NAME`   | Store entry name (per-store hooks only)          |
+| `STORE_TARGET` | Target path for the store (per-store hooks only) |
 
 ## Status Indicators
 
@@ -562,6 +562,26 @@ All hooks receive the following environment variables:
 - **File matching performance:** Explicit `files` entries are validated with a single stat call each (no directory walking). Simple glob patterns use `Glob` without recursive traversal. Only `**` patterns trigger a full directory walk, using the efficient `WalkDir` API.
 
 ## Troubleshooting
+
+### Target path is `~` but store says "no target configured"
+
+In YAML, a bare `~` is a null value. If you write:
+
+```yaml
+stores:
+  nvim:
+    target: ~
+```
+
+The ~ is parsed as null (empty string in Go), and store treats it as configured. **Quote the tilde**:
+
+```yaml
+stores:
+  nvim:
+    target: "~"
+```
+
+This is a YAML semantic -- the same applies to any other tool using YAML config files.
 
 ### Conflicts: files already exist at the target path
 
