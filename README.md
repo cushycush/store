@@ -40,16 +40,16 @@ All configuration lives in a single `.store/config.yaml` file that you commit al
 
 ## How It Differs from GNU Stow
 
-|                          | GNU Stow                                                      | store                                                                         |
-| ------------------------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **Directory structure**  | Must mirror the target filesystem hierarchy                   | Flat -- each store is a top-level directory                                   |
-| **Target paths**         | Inferred from directory structure and stow directory location | Explicitly declared per store in YAML config                                  |
-| **Configuration**        | Convention-based (directory layout is the config)             | Single `config.yaml` file                                                     |
-| **Granularity**          | Symlinks individual files within directories                  | Symlinks whole directories or individual files via patterns                   |
-| **Multiple targets**     | Requires separate packages per target location                | One store can deploy to multiple target paths                                 |
-| **Conflict handling**    | Refuses to proceed; user must manually move files             | Detects conflicts, offers to move existing files into the store automatically |
-| **Setup on new machine** | Run `stow` per package from the correct parent directory      | Run `store` from anywhere in the repo                                         |
-| **Secret management**    | No built-in support                                           | Encrypted secrets with template rendering                                     |
+|                           | GNU Stow                                                      | store                                                                         |
+| ------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **Directory structure**   | Must mirror the target filesystem hierarchy                   | Flat -- each store is a top-level directory                                   |
+| **Target paths**          | Inferred from directory structure and stow directory location | Explicitly declared per store in YAML config                                  |
+| **Configuration**         | Convention-based (directory layout is the config)             | Single `config.yaml` file                                                     |
+| **Granularity**           | Symlinks individual files within directories                  | Symlinks whole directories or individual files via patterns                   |
+| **Multiple targets**      | Requires separate packages per target location                | One store can deploy to multiple target paths                                 |
+| **Conflict handling**     | Refuses to proceed; user must manually move files             | Detects conflicts, offers to move existing files into the store automatically |
+| **Setup on new machine**  | Run `stow` per package from the correct parent directory      | Run `store` from anywhere in the repo                                         |
+| **Secret management**     | No built-in support                                           | Encrypted secrets with template rendering                                     |
 | **Platform conditionals** | No built-in support                                           | `when:` clause for OS/arch/distro/hostname filtering                          |
 
 ## Installation
@@ -65,7 +65,7 @@ go install github.com/cush/store/cmd/store@latest
 ```sh
 git clone https://github.com/cush/store.git
 cd store
-make build VERSION=0.7.0
+make build VERSION=0.8.0
 # Move the binary somewhere in your PATH
 mv store /usr/local/bin/
 ```
@@ -339,20 +339,20 @@ Prints the current version.
 
 ```sh
 $ store version
-store version 0.7.0
+store version 0.8.0
 ```
 
 The `--version` flag also works:
 
 ```sh
 $ store --version
-store version 0.7.0
+store version 0.8.0
 ```
 
 When built without a version (e.g., `go build ./cmd/store`), the version defaults to `dev`. Use the Makefile to build with a specific version:
 
 ```sh
-make build VERSION=0.7.0
+make build VERSION=0.8.0
 ```
 
 ### `store status [name]`
@@ -585,19 +585,19 @@ For a command like `store` (storeall):
 
 All hooks receive the following environment variables:
 
-| Variable       | Description                                      |
-| -------------- | ------------------------------------------------ |
-| `STORE_ROOT`   | Absolute path to the repository root             |
-| `STORE_ACTION` | `link` or `unlink`                               |
-| `STORE_NAME`   | Store entry name (per-store hooks only)          |
-| `STORE_TARGET` | Target path for the store (per-store hooks only) |
-| `STORE_OS`     | Operating system (linux, darwin, windows)        |
-| `STORE_ARCH`   | CPU architecture (amd64, arm64)                  |
-| `STORE_DISTRO` | Distribution (ubuntu, arch, macos, etc.)         |
-| `STORE_DISTRO_VERSION` | Distribution version (24.04, rolling, etc.) |
-| `STORE_HOSTNAME` | Machine hostname                               |
-| `STORE_WSL`    | Whether running in WSL (true/false)              |
-| `STORE_SHELL`   | Current shell (zsh, bash, fish, nu)              |
+| Variable               | Description                                      |
+| ---------------------- | ------------------------------------------------ |
+| `STORE_ROOT`           | Absolute path to the repository root             |
+| `STORE_ACTION`         | `link` or `unlink`                               |
+| `STORE_NAME`           | Store entry name (per-store hooks only)          |
+| `STORE_TARGET`         | Target path for the store (per-store hooks only) |
+| `STORE_OS`             | Operating system (linux, darwin, windows)        |
+| `STORE_ARCH`           | CPU architecture (amd64, arm64)                  |
+| `STORE_DISTRO`         | Distribution (ubuntu, arch, macos, etc.)         |
+| `STORE_DISTRO_VERSION` | Distribution version (24.04, rolling, etc.)      |
+| `STORE_HOSTNAME`       | Machine hostname                                 |
+| `STORE_WSL`            | Whether running in WSL (true/false)              |
+| `STORE_SHELL`          | Current shell (zsh, bash, fish, nu)              |
 
 ## Secrets
 
@@ -722,15 +722,15 @@ stores:
 
 ### Available conditions
 
-| Field            | Description                                      | Possible Values                               |
-| ---------------- | ------------------------------------------------ | --------------------------------------------- |
-| `os`             | Operating system                                 | `linux`, `darwin`, `windows`                  |
-| `arch`           | CPU architecture                                 | `amd64`, `arm64`, `arm`, etc.                 |
-| `distro`         | Linux distribution or OS name                    | `ubuntu`, `fedora`, `arch`, `macos`, `windows` |
-| `distro_version` | Version of the distribution                      | `24.04`, `rolling`, etc.                      |
-| `hostname`       | Machine hostname                                 | Any valid hostname                            |
-| `shell`          | Current shell                                    | `zsh`, `bash`, `fish`, `nu`                   |
-| `wsl`            | Whether running in Windows Subsystem for Linux | `true`, `false`                               |
+| Field            | Description                                    | Possible Values                                |
+| ---------------- | ---------------------------------------------- | ---------------------------------------------- |
+| `os`             | Operating system                               | `linux`, `darwin`, `windows`                   |
+| `arch`           | CPU architecture                               | `amd64`, `arm64`, `arm`, etc.                  |
+| `distro`         | Linux distribution or OS name                  | `ubuntu`, `fedora`, `arch`, `macos`, `windows` |
+| `distro_version` | Version of the distribution                    | `24.04`, `rolling`, etc.                       |
+| `hostname`       | Machine hostname                               | Any valid hostname                             |
+| `shell`          | Current shell                                  | `zsh`, `bash`, `fish`, `nu`                    |
+| `wsl`            | Whether running in Windows Subsystem for Linux | `true`, `false`                                |
 
 ### Matching behavior
 
