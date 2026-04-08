@@ -38,23 +38,14 @@ func resolveTargetMatches(source string, te config.TargetEntry) ([]string, error
 	return matcher.Match(source, files, patterns, te.Ignore)
 }
 
-// StoreTarget creates symlinks for a single target entry within a store.
-func StoreTarget(root string, name string, te config.TargetEntry) error {
-	source := filepath.Join(root, name)
-	target, err := config.ExpandHome(te.Target)
-	if err != nil {
-		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
-	}
-
-	useFileMode := shouldUseFileMode(source, te)
-	if !useFileMode {
-		if err := linker.Link(source, target); err != nil {
+func linkTarget(source, name, expandedTarget string, te config.TargetEntry) error {
+	if !shouldUseFileMode(source, te) {
+		if err := linker.Link(source, expandedTarget); err != nil {
 			return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 		}
 		return nil
 	}
 
-	// File mode: resolve matches and link each file.
 	files, err := resolveTargetMatches(source, te)
 	if err != nil {
 		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
@@ -63,20 +54,65 @@ func StoreTarget(root string, name string, te config.TargetEntry) error {
 	var errors []error
 	for _, rel := range files {
 		src := filepath.Join(source, rel)
-		tgt := filepath.Join(target, rel)
+		tgt := filepath.Join(expandedTarget, rel)
 		if err := linker.Link(src, tgt); err != nil {
 			errors = append(errors, fmt.Errorf("  %s: %w", rel, err))
 		}
 	}
 
 	if len(errors) > 0 {
-		for _, err := range errors {
-			fmt.Printf("  error: %s\n", err)
-		}
+		printErrors(errors)
 		return fmt.Errorf("store %q target %q: %d file(s) failed", name, te.Target, len(errors))
 	}
 
 	return nil
+}
+
+func printErrors(errors []error) {
+	for _, err := range errors {
+		fmt.Printf("  error: %s\n", err)
+	}
+}
+
+func runStoreTargets(root, name string, entry config.StoreEntry, action string, runTarget func(config.TargetEntry) error, failureFmt string) error {
+	targets := entry.ResolvedTargets()
+	if len(targets) == 0 {
+		return nil
+	}
+
+	targetStr := targets[0].Target
+	if err := hooks.RunEntry(root, name, targetStr, action, "pre", entry.Hooks); err != nil {
+		return err
+	}
+
+	var errors []error
+	for _, te := range targets {
+		if err := runTarget(te); err != nil {
+			errors = append(errors, err)
+		}
+	}
+
+	if len(errors) > 0 {
+		printErrors(errors)
+		return fmt.Errorf(failureFmt, name, len(errors))
+	}
+
+	if err := hooks.RunEntry(root, name, targetStr, action, "post", entry.Hooks); err != nil {
+		fmt.Printf("  warning: %s\n", err)
+	}
+
+	return nil
+}
+
+// StoreTarget creates symlinks for a single target entry within a store.
+func StoreTarget(root string, name string, te config.TargetEntry) error {
+	source := filepath.Join(root, name)
+	target, err := config.ExpandHome(te.Target)
+	if err != nil {
+		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
+	}
+
+	return linkTarget(source, name, target, te)
 }
 
 // resolveSource returns the effective source directory for a store.
@@ -122,107 +158,21 @@ func StoreTargetWithSecrets(root string, name string, te config.TargetEntry, sec
 		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 	}
 
-	useFileMode := shouldUseFileMode(source, te)
-	if !useFileMode {
-		if err := linker.Link(source, target); err != nil {
-			return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
-		}
-		return nil
-	}
-
-	files, err := resolveTargetMatches(source, te)
-	if err != nil {
-		return fmt.Errorf("store %q target %q: %w", name, te.Target, err)
-	}
-
-	var errors []error
-	for _, rel := range files {
-		src := filepath.Join(source, rel)
-		tgt := filepath.Join(target, rel)
-		if err := linker.Link(src, tgt); err != nil {
-			errors = append(errors, fmt.Errorf("  %s: %w", rel, err))
-		}
-	}
-
-	if len(errors) > 0 {
-		for _, err := range errors {
-			fmt.Printf("  error: %s\n", err)
-		}
-		return fmt.Errorf("store %q target %q: %d file(s) failed", name, te.Target, len(errors))
-	}
-
-	return nil
+	return linkTarget(source, name, target, te)
 }
 
 // Store creates symlinks for a single store entry (all targets).
 func Store(root string, name string, entry config.StoreEntry) error {
-	targets := entry.ResolvedTargets()
-	if len(targets) == 0 {
-		return nil // No targets configured yet; skip silently.
-	}
-
-	// Resolve first target for hook env var.
-	targetStr := targets[0].Target
-
-	// Pre hook - abort this store on failure.
-	if err := hooks.RunEntry(root, name, targetStr, "link", "pre", entry.Hooks); err != nil {
-		return err
-	}
-
-	var errors []error
-	for _, te := range targets {
-		if err := StoreTarget(root, name, te); err != nil {
-			errors = append(errors, err)
-		}
-	}
-
-	if len(errors) > 0 {
-		for _, err := range errors {
-			fmt.Printf("  error: %s\n", err)
-		}
-		return fmt.Errorf("store %q: %d target(s) failed", name, len(errors))
-	}
-
-	// Post hook - warn on failure, don't abort.
-	if err := hooks.RunEntry(root, name, targetStr, "link", "post", entry.Hooks); err != nil {
-		fmt.Printf("  warning: %s\n", err)
-	}
-
-	return nil
+	return runStoreTargets(root, name, entry, "link", func(te config.TargetEntry) error {
+		return StoreTarget(root, name, te)
+	}, "store %q: %d target(s) failed")
 }
 
 // StoreWithSecrets is like Store but renders template files before linking.
 func StoreWithSecrets(root string, name string, entry config.StoreEntry, secrets map[string]string) error {
-	targets := entry.ResolvedTargets()
-	if len(targets) == 0 {
-		return nil // No targets configured yet; skip silently.
-	}
-
-	targetStr := targets[0].Target
-
-	if err := hooks.RunEntry(root, name, targetStr, "link", "pre", entry.Hooks); err != nil {
-		return err
-	}
-
-	var errors []error
-	for _, te := range targets {
-		if err := StoreTargetWithSecrets(root, name, te, secrets); err != nil {
-			errors = append(errors, err)
-		}
-	}
-
-	if len(errors) > 0 {
-		for _, err := range errors {
-			fmt.Printf("  error: %s\n", err)
-		}
-		return fmt.Errorf("store %q: %d target(s) failed", name, len(errors))
-	}
-
-	if err := hooks.RunEntry(root, name, targetStr, "link", "post", entry.Hooks); err != nil {
-		fmt.Printf("  warning: %s\n", err)
-	}
-
-	return nil
+	return runStoreTargets(root, name, entry, "link", func(te config.TargetEntry) error {
+		return StoreTargetWithSecrets(root, name, te, secrets)
+	}, "store %q: %d target(s) failed")
 }
 
 // StoreAll creates symlinks for all stores in the config.
@@ -248,9 +198,7 @@ func StoreAll(root string, cfg *config.Config) error {
 
 	if len(errors) > 0 {
 		fmt.Println()
-		for _, err := range errors {
-			fmt.Printf("  error: %s\n", err)
-		}
+		printErrors(errors)
 		return fmt.Errorf("%d store(s) failed", len(errors))
 	}
 
@@ -280,9 +228,7 @@ func StoreAllWithSecrets(root string, cfg *config.Config, secrets map[string]str
 
 	if len(errors) > 0 {
 		fmt.Println()
-		for _, err := range errors {
-			fmt.Printf("  error: %s\n", err)
-		}
+		printErrors(errors)
 		return fmt.Errorf("%d store(s) failed", len(errors))
 	}
 
@@ -360,38 +306,9 @@ func StoreRemoveTarget(root string, name string, te config.TargetEntry) error {
 
 // StoreRemove removes symlinks for a single store (all targets).
 func StoreRemove(root string, name string, entry config.StoreEntry) error {
-	targets := entry.ResolvedTargets()
-	if len(targets) == 0 {
-		return nil
-	}
-
-	targetStr := targets[0].Target
-
-	// Pre hook - abort this store on failure.
-	if err := hooks.RunEntry(root, name, targetStr, "unlink", "pre", entry.Hooks); err != nil {
-		return err
-	}
-
-	var errors []error
-	for _, te := range targets {
-		if err := StoreRemoveTarget(root, name, te); err != nil {
-			errors = append(errors, err)
-		}
-	}
-
-	if len(errors) > 0 {
-		for _, err := range errors {
-			fmt.Printf("  error: %s\n", err)
-		}
-		return fmt.Errorf("store %q: %d target(s) failed to unlink", name, len(errors))
-	}
-
-	// Post hook - warn on failure, don't abort.
-	if err := hooks.RunEntry(root, name, targetStr, "unlink", "post", entry.Hooks); err != nil {
-		fmt.Printf("  warning: %s\n", err)
-	}
-
-	return nil
+	return runStoreTargets(root, name, entry, "unlink", func(te config.TargetEntry) error {
+		return StoreRemoveTarget(root, name, te)
+	}, "store %q: %d target(s) failed to unlink")
 }
 
 // cleanupEmptyDirs removes empty directories under target that were created as
@@ -454,9 +371,7 @@ func StoreRemoveAll(root string, cfg *config.Config) error {
 
 	if len(errors) > 0 {
 		fmt.Println()
-		for _, err := range errors {
-			fmt.Printf("  error: %s\n", err)
-		}
+		printErrors(errors)
 		return fmt.Errorf("%d store(s) failed", len(errors))
 	}
 
