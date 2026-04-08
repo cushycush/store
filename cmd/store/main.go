@@ -5,13 +5,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/cushycush/store/internal/config"
 	"github.com/cushycush/store/internal/hooks"
 	"github.com/cushycush/store/internal/linker"
+	"github.com/cushycush/store/internal/render"
+	"github.com/cushycush/store/internal/secrets"
 	storeops "github.com/cushycush/store/internal/store"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var (
@@ -182,7 +187,156 @@ the entire field. Use --clear-files or --clear-patterns to remove those fields.`
 
 	targetCmd.AddCommand(targetAddCmd, targetRemoveCmd, targetModifyCmd)
 
-	rootCmd.AddCommand(initCmd, addCmd, modifyCmd, removeCmd, removeAllCmd, statusCmd, versionCmd, targetCmd)
+	secretCmd := &cobra.Command{
+		Use:   "secret",
+		Short: "Manage encrypted secrets",
+		Long:  "Set, get, remove, and list secrets stored in .store/secrets.enc.",
+	}
+
+	secretSetCmd := &cobra.Command{
+		Use:   "set <name> [value]",
+		Short: "Set a secret value",
+		Args:  cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := config.FindRoot()
+			if err != nil {
+				return err
+			}
+
+			value := ""
+			if len(args) == 2 {
+				value = args[1]
+			} else {
+				fmt.Print("Enter secret value: ")
+				pass, err := term.ReadPassword(int(syscall.Stdin))
+				fmt.Println()
+				if err != nil {
+					return fmt.Errorf("failed to read secret value: %w", err)
+				}
+				value = string(pass)
+			}
+
+			passphrase, err := getPassphrase()
+			if err != nil {
+				return err
+			}
+
+			secretMap, err := secrets.Load(root, passphrase)
+			if err != nil {
+				return err
+			}
+			secretMap[args[0]] = value
+
+			if err := secrets.Save(root, passphrase, secretMap); err != nil {
+				return err
+			}
+
+			fmt.Printf("Set secret %s\n", args[0])
+			return nil
+		},
+	}
+
+	secretGetCmd := &cobra.Command{
+		Use:   "get <name>",
+		Short: "Get a secret value",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := config.FindRoot()
+			if err != nil {
+				return err
+			}
+
+			passphrase, err := getPassphrase()
+			if err != nil {
+				return err
+			}
+
+			secretMap, err := secrets.Load(root, passphrase)
+			if err != nil {
+				return err
+			}
+
+			value, ok := secretMap[args[0]]
+			if !ok {
+				return fmt.Errorf("secret %q not found", args[0])
+			}
+
+			fmt.Println(value)
+			return nil
+		},
+	}
+
+	secretRmCmd := &cobra.Command{
+		Use:   "rm <name>",
+		Short: "Remove a secret",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := config.FindRoot()
+			if err != nil {
+				return err
+			}
+
+			passphrase, err := getPassphrase()
+			if err != nil {
+				return err
+			}
+
+			secretMap, err := secrets.Load(root, passphrase)
+			if err != nil {
+				return err
+			}
+
+			if _, ok := secretMap[args[0]]; !ok {
+				return fmt.Errorf("secret %q not found", args[0])
+			}
+			delete(secretMap, args[0])
+
+			if err := secrets.Save(root, passphrase, secretMap); err != nil {
+				return err
+			}
+
+			fmt.Printf("Removed secret %s\n", args[0])
+			return nil
+		},
+	}
+
+	secretListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List secret names",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := config.FindRoot()
+			if err != nil {
+				return err
+			}
+
+			passphrase, err := getPassphrase()
+			if err != nil {
+				return err
+			}
+
+			secretMap, err := secrets.Load(root, passphrase)
+			if err != nil {
+				return err
+			}
+
+			names := make([]string, 0, len(secretMap))
+			for name := range secretMap {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+
+			for _, name := range names {
+				fmt.Println(name)
+			}
+
+			return nil
+		},
+	}
+
+	secretCmd.AddCommand(secretSetCmd, secretGetCmd, secretRmCmd, secretListCmd)
+
+	rootCmd.AddCommand(initCmd, addCmd, modifyCmd, removeCmd, removeAllCmd, statusCmd, versionCmd, targetCmd, secretCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -261,7 +415,11 @@ func runAdd(name, target string, files, patterns []string) error {
 
 	// Create symlinks if a target is configured.
 	if target != "" {
-		if err := storeWithConflictResolution(root, name, entry); err != nil {
+		secretMap, err := loadSecretsIfNeeded(root, name)
+		if err != nil {
+			return err
+		}
+		if err := storeWithConflictResolution(root, name, entry, secretMap); err != nil {
 			return err
 		}
 		if entry.HasFileMode() {
@@ -333,7 +491,11 @@ func runModify(cmd *cobra.Command, name, target string, files, patterns []string
 
 	// Re-create symlinks with updated config.
 	if entry.Target != "" {
-		if err := storeWithConflictResolution(root, name, entry); err != nil {
+		secretMap, err := loadSecretsIfNeeded(root, name)
+		if err != nil {
+			return err
+		}
+		if err := storeWithConflictResolution(root, name, entry, secretMap); err != nil {
 			return err
 		}
 		if entry.HasFileMode() {
@@ -379,8 +541,18 @@ func runStoreAll(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	names := make([]string, 0, len(cfg.Stores))
+	for name := range cfg.Stores {
+		names = append(names, name)
+	}
+
+	secretMap, err := loadSecretsIfNeeded(root, names...)
+	if err != nil {
+		return err
+	}
+
 	fmt.Println("Storing all stores:")
-	err = storeAllWithConflictResolution(root, cfg)
+	err = storeAllWithConflictResolution(root, cfg, secretMap)
 
 	// Global post hook.
 	if err := hooks.RunGlobal(root, "post-store", "link"); err != nil {
@@ -530,6 +702,47 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// getPassphrase reads the passphrase from STORE_PASSPHRASE env var or prompts interactively.
+func getPassphrase() (string, error) {
+	if p := os.Getenv("STORE_PASSPHRASE"); p != "" {
+		return p, nil
+	}
+	fmt.Print("Enter passphrase: ")
+	pass, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Println()
+	if err != nil {
+		return "", fmt.Errorf("failed to read passphrase: %w", err)
+	}
+	return string(pass), nil
+}
+
+// loadSecretsIfNeeded checks if any of the given store directories contain template
+// placeholders. If so, prompts for passphrase and returns decrypted secrets.
+// Returns nil if no rendering is needed.
+func loadSecretsIfNeeded(root string, names ...string) (map[string]string, error) {
+	needsSecrets := false
+	for _, name := range names {
+		storeDir := filepath.Join(root, name)
+		needs, err := render.NeedsRendering(storeDir)
+		if err != nil {
+			continue
+		}
+		if needs {
+			needsSecrets = true
+			break
+		}
+	}
+	if !needsSecrets {
+		return nil, nil
+	}
+
+	passphrase, err := getPassphrase()
+	if err != nil {
+		return nil, err
+	}
+	return secrets.Load(root, passphrase)
+}
+
 // resolveTargetPath normalizes a target path for storage: expands ~ prefix,
 // resolves relative paths to absolute. Tilde-prefixed paths are kept as-is
 // for portability across machines.
@@ -614,7 +827,11 @@ func runTargetAdd(name, target string, files, patterns []string) error {
 	}
 
 	// Create symlinks for the new target.
-	if err := storeTargetWithConflictResolution(root, name, newTarget); err != nil {
+	secretMap, err := loadSecretsIfNeeded(root, name)
+	if err != nil {
+		return err
+	}
+	if err := storeTargetWithConflictResolution(root, name, newTarget, secretMap); err != nil {
 		return err
 	}
 
@@ -760,9 +977,13 @@ func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []
 	}
 
 	// Re-resolve from entry in case we migrated back.
+	secretMap, err := loadSecretsIfNeeded(root, name)
+	if err != nil {
+		return err
+	}
 	for _, resolved := range entry.ResolvedTargets() {
 		if resolved.Target == target {
-			if err := storeTargetWithConflictResolution(root, name, resolved); err != nil {
+			if err := storeTargetWithConflictResolution(root, name, resolved, secretMap); err != nil {
 				return err
 			}
 			if resolved.HasFileMode() {
@@ -823,7 +1044,7 @@ func checkBackups(conflicts []storeops.ConflictInfo) error {
 
 // storeWithConflictResolution checks for conflicts, prompts the user to resolve
 // them, then creates symlinks for all targets in the entry.
-func storeWithConflictResolution(root, name string, entry config.StoreEntry) error {
+func storeWithConflictResolution(root, name string, entry config.StoreEntry, secrets map[string]string) error {
 	conflicts, err := storeops.CollectConflicts(root, name, entry)
 	if err != nil {
 		return err
@@ -844,12 +1065,12 @@ func storeWithConflictResolution(root, name string, entry config.StoreEntry) err
 		fmt.Println()
 	}
 
-	return storeops.Store(root, name, entry)
+	return storeops.StoreWithSecrets(root, name, entry, secrets)
 }
 
 // storeTargetWithConflictResolution checks for conflicts on a single target,
 // prompts the user, resolves them, then creates symlinks.
-func storeTargetWithConflictResolution(root, name string, te config.TargetEntry) error {
+func storeTargetWithConflictResolution(root, name string, te config.TargetEntry, secrets map[string]string) error {
 	conflicts, err := storeops.CollectTargetConflicts(root, name, te)
 	if err != nil {
 		return err
@@ -870,12 +1091,12 @@ func storeTargetWithConflictResolution(root, name string, te config.TargetEntry)
 		fmt.Println()
 	}
 
-	return storeops.StoreTarget(root, name, te)
+	return storeops.StoreTargetWithSecrets(root, name, te, secrets)
 }
 
 // storeAllWithConflictResolution checks for conflicts across all stores,
 // prompts once, resolves, then creates all symlinks.
-func storeAllWithConflictResolution(root string, cfg *config.Config) error {
+func storeAllWithConflictResolution(root string, cfg *config.Config, secrets map[string]string) error {
 	if len(cfg.Stores) == 0 {
 		return fmt.Errorf("no stores defined in config")
 	}
@@ -905,7 +1126,7 @@ func storeAllWithConflictResolution(root string, cfg *config.Config) error {
 		fmt.Println()
 	}
 
-	return storeops.StoreAll(root, cfg)
+	return storeops.StoreAllWithSecrets(root, cfg, secrets)
 }
 
 func printStatus(info storeops.StatusInfo) {
