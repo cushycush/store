@@ -3,6 +3,7 @@
 `store` manages dotfile symlinks from a single repository without requiring a mirrored target directory layout.
 
 ## Table of Contents
+
 - [Overview](#overview)
 - [How It Differs from GNU Stow](#how-it-differs-from-gnu-stow)
 - [Installation](#installation)
@@ -54,22 +55,22 @@ Example result after running `store`:
 
 ## How It Differs from GNU Stow
 
-| Differentiator | GNU Stow | store |
-| --- | --- | --- |
-| **Directory structure** | Must mirror the target filesystem hierarchy | Uses top-level store directories plus explicit config |
-| **Target paths** | Inferred from package layout and invocation directory | Declared explicitly per store or target in YAML |
-| **Configuration** | Convention-based | Single `.store/config.yaml` file |
-| **Granularity** | Primarily package/file symlinks based on layout | Whole-directory mode or file-mode with `files`/`patterns` |
-| **Multiple targets** | Usually split across separate packages | One store can deploy to multiple target paths |
-| **Conflict handling** | Stops and requires manual cleanup | Detects conflicts and can move existing files into the store |
-| **Setup on new machine** | Run `stow` from the right place with the right packages | Run `store` anywhere inside the repo |
-| **Secret management** | No built-in encrypted secret store | Encrypted secrets plus `{{ secret "name" }}` templates |
-| **Platform conditionals** | No built-in platform filters | `when:` supports OS, arch, distro, hostname, shell, and WSL |
-| **Ignore patterns** | Manual exclusions or separate packages | Built-in global ignores plus per-store/per-target `ignore:` |
-| **Shell completion** | Shell-specific setup outside the tool | `store completion` generates scripts for major shells |
-| **Health checks (doctor)** | No built-in diagnostics command | `store doctor` checks config, targets, secrets, and platform skips |
-| **Import existing symlinks** | No import command | `store import` scans existing symlinks and writes config |
-| **Dry run preview** | No built-in preview command | `store diff` shows create/replace/conflict actions before changes |
+| Differentiator               | GNU Stow                                                | store                                                              |
+| ---------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------ |
+| **Directory structure**      | Must mirror the target filesystem hierarchy             | Uses top-level store directories plus explicit config              |
+| **Target paths**             | Inferred from package layout and invocation directory   | Declared explicitly per store or target in YAML                    |
+| **Configuration**            | Convention-based                                        | Single `.store/config.yaml` file                                   |
+| **Granularity**              | Primarily package/file symlinks based on layout         | Whole-directory mode or file-mode with `files`/`patterns`          |
+| **Multiple targets**         | Usually split across separate packages                  | One store can deploy to multiple target paths                      |
+| **Conflict handling**        | Stops and requires manual cleanup                       | Detects conflicts and can move existing files into the store       |
+| **Setup on new machine**     | Run `stow` from the right place with the right packages | Run `store` anywhere inside the repo                               |
+| **Secret management**        | No built-in encrypted secret store                      | Encrypted secrets plus `{{ secret "name" }}` templates             |
+| **Platform conditionals**    | No built-in platform filters                            | `when:` supports OS, arch, distro, hostname, shell, and WSL        |
+| **Ignore patterns**          | Manual exclusions or separate packages                  | Built-in global ignores plus per-store/per-target `ignore:`        |
+| **Shell completion**         | Shell-specific setup outside the tool                   | `store completion` generates scripts for major shells              |
+| **Health checks (doctor)**   | No built-in diagnostics command                         | `store doctor` checks config, targets, secrets, and platform skips |
+| **Import existing symlinks** | No import command                                       | `store import` scans existing symlinks and writes config           |
+| **Dry run preview**          | No built-in preview command                             | `store diff` shows create/replace/conflict actions before changes  |
 
 ## Installation
 
@@ -84,7 +85,7 @@ $ go install github.com/cush/store/cmd/store@latest
 ```sh
 $ git clone https://github.com/cush/store.git
 $ cd store
-$ make build VERSION=0.9.0
+$ make build VERSION=1.0.0
 $ mv store /usr/local/bin/
 ```
 
@@ -144,10 +145,10 @@ Run `store --help` for the full CLI tree. The command reference below documents 
 
 Applies all configured stores. This is the default command you run after cloning a dotfiles repo on a new machine.
 
-| Flag | Short | Description |
-| --- | --- | --- |
-| `--only` |  | Apply only the named stores; repeatable |
-| `--force` |  | Create `.bak` backups without prompting when conflicts require overwriting files in the store |
+| Flag      | Short | Description                                                                                   |
+| --------- | ----- | --------------------------------------------------------------------------------------------- |
+| `--only`  |       | Apply only the named stores; repeatable                                                       |
+| `--force` |       | Create `.bak` backups without prompting when conflicts require overwriting files in the store |
 
 ```sh
 $ store --only nvim --only git
@@ -188,10 +189,10 @@ Use this once at the root of a new dotfiles repo.
 
 Scans for existing symlinks that already point into the repo and imports them into `.store/config.yaml`.
 
-| Flag | Short | Description |
-| --- | --- | --- |
-| `--scan-dir` |  | Directory to scan for symlinks; repeatable; defaults to `~`, `~/.config`, `~/.local/share`, and `~/.local/bin` |
-| `--dry-run` |  | Print discovered imports without writing config |
+| Flag         | Short | Description                                                                                                    |
+| ------------ | ----- | -------------------------------------------------------------------------------------------------------------- |
+| `--scan-dir` |       | Directory to scan for symlinks; repeatable; defaults to `~`, `~/.config`, `~/.local/share`, and `~/.local/bin` |
+| `--dry-run`  |       | Print discovered imports without writing config                                                                |
 
 ```sh
 $ store import --dry-run
@@ -226,11 +227,11 @@ Relevant details:
 
 Creates a store directory if needed, adds the config entry, and immediately links it if a target is provided.
 
-| Flag | Short | Description |
-| --- | --- | --- |
-| `--target` | `-t` | Target path for the store |
-| `--files` | `-f` | Explicit files to link individually; repeatable |
-| `--patterns` | `-p` | Glob patterns to match files; repeatable; supports `**` |
+| Flag         | Short | Description                                             |
+| ------------ | ----- | ------------------------------------------------------- |
+| `--target`   | `-t`  | Target path for the store                               |
+| `--files`    | `-f`  | Explicit files to link individually; repeatable         |
+| `--patterns` | `-p`  | Glob patterns to match files; repeatable; supports `**` |
 
 ```sh
 $ store add nvim -t ~/.config/nvim
@@ -249,13 +250,13 @@ How it works:
 
 Updates an existing single-target store. Each provided flag replaces the entire field.
 
-| Flag | Short | Description |
-| --- | --- | --- |
-| `--target` | `-t` | Replace the target path |
-| `--files` | `-f` | Replace the file list; repeatable |
-| `--patterns` | `-p` | Replace the pattern list; repeatable |
-| `--clear-files` |  | Remove all files from the entry |
-| `--clear-patterns` |  | Remove all patterns from the entry |
+| Flag               | Short | Description                          |
+| ------------------ | ----- | ------------------------------------ |
+| `--target`         | `-t`  | Replace the target path              |
+| `--files`          | `-f`  | Replace the file list; repeatable    |
+| `--patterns`       | `-p`  | Replace the pattern list; repeatable |
+| `--clear-files`    |       | Remove all files from the entry      |
+| `--clear-patterns` |       | Remove all patterns from the entry   |
 
 ```sh
 $ store modify nvim -t ~/.config/nvim-custom
@@ -272,11 +273,11 @@ How it works:
 
 Adds another target to an existing store.
 
-| Flag | Short | Description |
-| --- | --- | --- |
-| `--target` | `-t` | Target path to add; required |
-| `--files` | `-f` | Explicit files to link individually; repeatable |
-| `--patterns` | `-p` | Glob patterns to match files; repeatable; supports `**` |
+| Flag         | Short | Description                                             |
+| ------------ | ----- | ------------------------------------------------------- |
+| `--target`   | `-t`  | Target path to add; required                            |
+| `--files`    | `-f`  | Explicit files to link individually; repeatable         |
+| `--patterns` | `-p`  | Glob patterns to match files; repeatable; supports `**` |
 
 ```sh
 $ store target add shells -t ~/.config/fish -f config.fish
@@ -292,9 +293,9 @@ How it works:
 
 Removes one target from a store and unlinks that target's symlinks.
 
-| Flag | Short | Description |
-| --- | --- | --- |
-| `--target` | `-t` | Target path to remove; required |
+| Flag       | Short | Description                     |
+| ---------- | ----- | ------------------------------- |
+| `--target` | `-t`  | Target path to remove; required |
 
 ```sh
 $ store target remove shells -t ~/.config/fish
@@ -314,13 +315,13 @@ How it works:
 
 Updates the `files` or `patterns` for one target inside a multi-target store.
 
-| Flag | Short | Description |
-| --- | --- | --- |
-| `--target` | `-t` | Target path to modify; required |
-| `--files` | `-f` | Replace the file list; repeatable |
-| `--patterns` | `-p` | Replace the pattern list; repeatable |
-| `--clear-files` |  | Remove all files from the target |
-| `--clear-patterns` |  | Remove all patterns from the target |
+| Flag               | Short | Description                          |
+| ------------------ | ----- | ------------------------------------ |
+| `--target`         | `-t`  | Target path to modify; required      |
+| `--files`          | `-f`  | Replace the file list; repeatable    |
+| `--patterns`       | `-p`  | Replace the pattern list; repeatable |
+| `--clear-files`    |       | Remove all files from the target     |
+| `--clear-patterns` |       | Remove all patterns from the target  |
 
 ```sh
 $ store target modify shells -t ~ -f .zshrc -f .bashrc -f .zprofile
@@ -391,9 +392,9 @@ How it works:
 
 Previews what `store` would do without changing anything.
 
-| Flag | Short | Description |
-| --- | --- | --- |
-| `--only` |  | Preview only the named stores; repeatable |
+| Flag     | Short | Description                               |
+| -------- | ----- | ----------------------------------------- |
+| `--only` |       | Preview only the named stores; repeatable |
 
 ```sh
 $ store diff
@@ -461,7 +462,7 @@ $ store --version
 ```
 
 ```text
-store version 0.9.0
+store version 1.0.0
 ```
 
 If built without an injected version, the binary reports `dev`.
@@ -573,43 +574,43 @@ Rules:
 
 ### Top-level store fields
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `target` | No | Target path for a single-target store |
-| `files` | No | Explicit list of files to link individually |
-| `patterns` | No | Glob patterns to match files; supports `**` |
-| `ignore` | No | Glob patterns to exclude from linking |
-| `hooks` | No | Per-store `pre` and `post` shell commands |
-| `when` | No | Platform filter for this store |
-| `targets` | No | List of per-target entries for multi-target mode |
+| Field      | Required | Description                                      |
+| ---------- | -------- | ------------------------------------------------ |
+| `target`   | No       | Target path for a single-target store            |
+| `files`    | No       | Explicit list of files to link individually      |
+| `patterns` | No       | Glob patterns to match files; supports `**`      |
+| `ignore`   | No       | Glob patterns to exclude from linking            |
+| `hooks`    | No       | Per-store `pre` and `post` shell commands        |
+| `when`     | No       | Platform filter for this store                   |
+| `targets`  | No       | List of per-target entries for multi-target mode |
 
 ### Nested `targets[]` fields
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `targets[].target` | Yes | Target path for this target entry |
-| `targets[].files` | No | Explicit files to link individually for this target |
-| `targets[].patterns` | No | Glob patterns to match files for this target |
-| `targets[].ignore` | No | Glob patterns to exclude for this target |
+| Field                | Required | Description                                         |
+| -------------------- | -------- | --------------------------------------------------- |
+| `targets[].target`   | Yes      | Target path for this target entry                   |
+| `targets[].files`    | No       | Explicit files to link individually for this target |
+| `targets[].patterns` | No       | Glob patterns to match files for this target        |
+| `targets[].ignore`   | No       | Glob patterns to exclude for this target            |
 
 ### `hooks` fields
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `hooks.pre` | No | Command run before link or unlink work for the store |
-| `hooks.post` | No | Command run after link or unlink work for the store |
+| Field        | Required | Description                                          |
+| ------------ | -------- | ---------------------------------------------------- |
+| `hooks.pre`  | No       | Command run before link or unlink work for the store |
+| `hooks.post` | No       | Command run after link or unlink work for the store  |
 
 ### `when` fields
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `when.os` | No | OS name such as `linux`, `darwin`, or `windows` |
-| `when.arch` | No | CPU architecture such as `amd64` or `arm64` |
-| `when.distro` | No | Distro or OS family such as `ubuntu`, `arch`, `macos`, or `windows` |
-| `when.distro_version` | No | Distro version string |
-| `when.hostname` | No | Hostname to match |
-| `when.shell` | No | Current shell name such as `zsh`, `bash`, `fish`, or `nu` |
-| `when.wsl` | No | Whether the machine is running under WSL |
+| Field                 | Required | Description                                                         |
+| --------------------- | -------- | ------------------------------------------------------------------- |
+| `when.os`             | No       | OS name such as `linux`, `darwin`, or `windows`                     |
+| `when.arch`           | No       | CPU architecture such as `amd64` or `arm64`                         |
+| `when.distro`         | No       | Distro or OS family such as `ubuntu`, `arch`, `macos`, or `windows` |
+| `when.distro_version` | No       | Distro version string                                               |
+| `when.hostname`       | No       | Hostname to match                                                   |
+| `when.shell`          | No       | Current shell name such as `zsh`, `bash`, `fish`, or `nu`           |
+| `when.wsl`            | No       | Whether the machine is running under WSL                            |
 
 ### Matching and mode behavior
 
@@ -621,13 +622,13 @@ Rules:
 
 ### Pattern syntax
 
-| Pattern | Matches |
-| --- | --- |
-| `.zsh*` | `.zshrc`, `.zshenv`, and similar top-level files |
-| `*.conf` | Top-level `.conf` files |
-| `**/*.conf` | `.conf` files at any depth |
-| `config/*.lua` | `.lua` files directly inside `config/` |
-| `**/*.{lua,vim}` | `.lua` and `.vim` files recursively |
+| Pattern          | Matches                                          |
+| ---------------- | ------------------------------------------------ |
+| `.zsh*`          | `.zshrc`, `.zshenv`, and similar top-level files |
+| `*.conf`         | Top-level `.conf` files                          |
+| `**/*.conf`      | `.conf` files at any depth                       |
+| `config/*.lua`   | `.lua` files directly inside `config/`           |
+| `**/*.{lua,vim}` | `.lua` and `.vim` files recursively              |
 
 ### Target path rules
 
@@ -827,12 +828,12 @@ Relevant details:
 
 ## Status Indicators
 
-| Status | Meaning |
-| --- | --- |
-| `[linked]` | A symlink exists and points to the expected source |
-| `[missing]` | No symlink exists yet |
+| Status       | Meaning                                                          |
+| ------------ | ---------------------------------------------------------------- |
+| `[linked]`   | A symlink exists and points to the expected source               |
+| `[missing]`  | No symlink exists yet                                            |
 | `[conflict]` | A non-store file or directory exists where `store` wants to link |
-| `[broken]` | A symlink exists but points to a missing source |
+| `[broken]`   | A symlink exists but points to a missing source                  |
 
 These statuses appear in `store status`, and the same underlying states drive `store diff`.
 
