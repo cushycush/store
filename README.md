@@ -41,13 +41,13 @@ All configuration lives in a single `.store/config.yaml` file that you commit al
 ## How It Differs from GNU Stow
 
 |                           | GNU Stow                                                      | store                                                                         |
-| ------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------- | --- |
+| ------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | **Directory structure**   | Must mirror the target filesystem hierarchy                   | Flat -- each store is a top-level directory                                   |
 | **Target paths**          | Inferred from directory structure and stow directory location | Explicitly declared per store in YAML config                                  |
 | **Configuration**         | Convention-based (directory layout is the config)             | Single `config.yaml` file                                                     |
 | **Granularity**           | Symlinks individual files within directories                  | Symlinks whole directories or individual files via patterns                   |
 | **Multiple targets**      | Requires separate packages per target location                | One store can deploy to multiple target paths                                 |
-| **Conflict handling**     | Refuses to proceed; user must manually move files             | Detects conflicts, offers to move existing files into the store automatically | jk  |
+| **Conflict handling**     | Refuses to proceed; user must manually move files             | Detects conflicts, offers to move existing files into the store automatically |
 | **Setup on new machine**  | Run `stow` per package from the correct parent directory      | Run `store` from anywhere in the repo                                         |
 | **Secret management**     | No built-in support                                           | Encrypted secrets with template rendering                                     |
 | **Platform conditionals** | No built-in support                                           | `when:` clause for OS/arch/distro/hostname filtering                          |
@@ -360,7 +360,7 @@ make build VERSION=0.9.0
 
 Shows the symlink status for one or all stores. For file-mode stores, each file is shown individually.
 
-````sh
+```sh
 $ store status
   nvim                 [linked]   ~/.config/nvim
   shells               .zshrc               [linked]   ~/.zshrc
@@ -368,6 +368,12 @@ $ store status
   shells               config.fish          [linked]   ~/.config/fish/config.fish
   shells               config.nu            [linked]   ~/.config/nushell/config.nu
   git                  [conflict] ~/.config/git
+```
+
+```sh
+$ store status nvim
+  nvim                 [linked]   ~/.config/nvim
+```
 
 ### `store secret set <name> [value]`
 
@@ -382,7 +388,7 @@ Enter secret value: ****
 # Provide value as argument
 $ store secret set api_key "your-secret-value"
 Enter passphrase: ****
-````
+```
 
 ### `store secret get <name>`
 
@@ -416,8 +422,6 @@ github_token
 ```
 
 All secret commands prompt for a passphrase or read it from the `STORE_PASSPHRASE` environment variable.
-
-### `store status [name]`
 
 ## Config Format
 
@@ -744,7 +748,7 @@ stores:
 
 ### Example multi-platform setup
 
-````yaml
+```yaml
 stores:
   # Common configs for all machines
   common:
@@ -774,6 +778,7 @@ stores:
     target: "~/work"
     when:
       hostname: work-laptop
+```
 
 ## Ignoring Files
 
@@ -800,7 +805,7 @@ stores:
       - "*.bak"
       - "scratch/"
       - "**/*.test.lua"
-````
+```
 
 ### Auto-promotion
 
