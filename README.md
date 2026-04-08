@@ -64,7 +64,7 @@ go install github.com/cush/store/cmd/store@latest
 ```sh
 git clone https://github.com/cush/store.git
 cd store
-make build VERSION=0.6.0
+make build VERSION=0.7.0
 # Move the binary somewhere in your PATH
 mv store /usr/local/bin/
 ```
@@ -338,27 +338,27 @@ Prints the current version.
 
 ```sh
 $ store version
-store version 0.6.0
+store version 0.7.0
 ```
 
 The `--version` flag also works:
 
 ```sh
 $ store --version
-store version 0.6.0
+store version 0.7.0
 ```
 
 When built without a version (e.g., `go build ./cmd/store`), the version defaults to `dev`. Use the Makefile to build with a specific version:
 
 ```sh
-make build VERSION=0.6.0
+make build VERSION=0.7.0
 ```
 
 ### `store status [name]`
 
 Shows the symlink status for one or all stores. For file-mode stores, each file is shown individually.
 
-```sh
+````sh
 $ store status
   nvim                 [linked]   ~/.config/nvim
   shells               .zshrc               [linked]   ~/.zshrc
@@ -380,7 +380,7 @@ Enter secret value: ****
 # Provide value as argument
 $ store secret set api_key "your-secret-value"
 Enter passphrase: ****
-```
+````
 
 ### `store secret get <name>`
 
