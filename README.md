@@ -1,14 +1,30 @@
 ![store logo](https://res.cloudinary.com/cush/image/upload/v1775189496/screenshot-2026-04-02_22-10-09_y9sbug.png)
 
-A simpler alternative to [GNU Stow](https://www.gnu.org/software/stow/) for managing dotfile symlinks.
+`store` manages dotfile symlinks from a single repository without requiring a mirrored target directory layout.
+
+## Table of Contents
+- [Overview](#overview)
+- [How It Differs from GNU Stow](#how-it-differs-from-gnu-stow)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Commands](#commands)
+- [Config Format](#config-format)
+- [Hooks](#hooks)
+- [Secrets](#secrets)
+- [Platform Conditionals](#platform-conditionals)
+- [Ignoring Files](#ignoring-files)
+- [Shell Completion](#shell-completion)
+- [Status Indicators](#status-indicators)
+- [How It Works](#how-it-works)
+- [Troubleshooting](#troubleshooting)
 
 ## Overview
 
-`store` manages symlinks for your dotfiles without requiring mirrored directory structures. Each "store" is a directory in your repository that gets symlinked to a target location on your filesystem.
+Each store is a top-level directory in your repo. The config in `.store/config.yaml` tells `store` where that directory, or selected files inside it, should appear on disk.
 
-Your dotfiles repo might look like this:
+Example repo layout:
 
-```
+```text
 ~/dotfiles/
   .store/config.yaml
   nvim/
@@ -23,316 +39,417 @@ Your dotfiles repo might look like this:
     .gitconfig
 ```
 
-`store` creates symlinks so that each directory appears at its configured target:
+Example result after running `store`:
 
+```text
+~/.config/nvim                -> ~/dotfiles/nvim
+~/.zshrc                      -> ~/dotfiles/shells/.zshrc
+~/.bashrc                     -> ~/dotfiles/shells/.bashrc
+~/.config/fish/config.fish    -> ~/dotfiles/shells/config.fish
+~/.config/nushell/config.nu   -> ~/dotfiles/shells/config.nu
+~/.config/git                 -> ~/dotfiles/git
 ```
-~/.config/nvim       ->  ~/dotfiles/nvim
-~/.zshrc             ->  ~/dotfiles/shells/.zshrc
-~/.bashrc            ->  ~/dotfiles/shells/.bashrc
-~/.config/fish/config.fish  ->  ~/dotfiles/shells/config.fish
-~/.config/nushell/config.nu ->  ~/dotfiles/shells/config.nu
-~/.config/git        ->  ~/dotfiles/git
-```
 
-A single store can have multiple targets, so files that belong together conceptually (like shell configs) can live in one directory even if they deploy to different locations on disk.
-
-All configuration lives in a single `.store/config.yaml` file that you commit alongside your dotfiles.
+`store` supports whole-directory links, file-level links, multiple targets per store, encrypted template rendering for secrets, hooks, platform filters, ignore patterns, diff previews, health checks, and importing an existing symlink layout back into config.
 
 ## How It Differs from GNU Stow
 
-|                           | GNU Stow                                                      | store                                                                         |
-| ------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **Directory structure**   | Must mirror the target filesystem hierarchy                   | Flat -- each store is a top-level directory                                   |
-| **Target paths**          | Inferred from directory structure and stow directory location | Explicitly declared per store in YAML config                                  |
-| **Configuration**         | Convention-based (directory layout is the config)             | Single `config.yaml` file                                                     |
-| **Granularity**           | Symlinks individual files within directories                  | Symlinks whole directories or individual files via patterns                   |
-| **Multiple targets**      | Requires separate packages per target location                | One store can deploy to multiple target paths                                 |
-| **Conflict handling**     | Refuses to proceed; user must manually move files             | Detects conflicts, offers to move existing files into the store automatically |
-| **Setup on new machine**  | Run `stow` per package from the correct parent directory      | Run `store` from anywhere in the repo                                         |
-| **Secret management**     | No built-in support                                           | Encrypted secrets with template rendering                                     |
-| **Platform conditionals** | No built-in support                                           | `when:` clause for OS/arch/distro/hostname filtering                          |
-| **Ignore patterns**       | Requires manual exclusion or separate packages                | Built-in ignore with global defaults                                          |
+| Differentiator | GNU Stow | store |
+| --- | --- | --- |
+| **Directory structure** | Must mirror the target filesystem hierarchy | Uses top-level store directories plus explicit config |
+| **Target paths** | Inferred from package layout and invocation directory | Declared explicitly per store or target in YAML |
+| **Configuration** | Convention-based | Single `.store/config.yaml` file |
+| **Granularity** | Primarily package/file symlinks based on layout | Whole-directory mode or file-mode with `files`/`patterns` |
+| **Multiple targets** | Usually split across separate packages | One store can deploy to multiple target paths |
+| **Conflict handling** | Stops and requires manual cleanup | Detects conflicts and can move existing files into the store |
+| **Setup on new machine** | Run `stow` from the right place with the right packages | Run `store` anywhere inside the repo |
+| **Secret management** | No built-in encrypted secret store | Encrypted secrets plus `{{ secret "name" }}` templates |
+| **Platform conditionals** | No built-in platform filters | `when:` supports OS, arch, distro, hostname, shell, and WSL |
+| **Ignore patterns** | Manual exclusions or separate packages | Built-in global ignores plus per-store/per-target `ignore:` |
+| **Shell completion** | Shell-specific setup outside the tool | `store completion` generates scripts for major shells |
+| **Health checks (doctor)** | No built-in diagnostics command | `store doctor` checks config, targets, secrets, and platform skips |
+| **Import existing symlinks** | No import command | `store import` scans existing symlinks and writes config |
+| **Dry run preview** | No built-in preview command | `store diff` shows create/replace/conflict actions before changes |
 
 ## Installation
 
 ### go install
 
 ```sh
-go install github.com/cush/store/cmd/store@latest
+$ go install github.com/cush/store/cmd/store@latest
 ```
 
 ### Build from source
 
 ```sh
-git clone https://github.com/cush/store.git
-cd store
-make build VERSION=0.9.0
-# Move the binary somewhere in your PATH
-mv store /usr/local/bin/
+$ git clone https://github.com/cush/store.git
+$ cd store
+$ make build VERSION=0.9.0
+$ mv store /usr/local/bin/
 ```
 
 ## Quick Start
 
-1. Initialize a new dotfiles repo:
+1. Initialize a dotfiles repo:
 
 ```sh
-mkdir ~/dotfiles && cd ~/dotfiles
-git init
-store init
+$ mkdir ~/dotfiles
+$ cd ~/dotfiles
+$ git init
+$ store init
 ```
 
-2. Add a store for your Neovim config (whole-directory symlink):
+2. Add a whole-directory store:
 
 ```sh
-store add nvim -t ~/.config/nvim
+$ store add nvim -t ~/.config/nvim
 ```
 
-This creates the `nvim/` directory, saves the target to `.store/config.yaml`, and creates the symlink.
-
-3. Add a store with file-level symlinks for files that live in `~`:
+3. Add a file-level store for files that live in your home directory:
 
 ```sh
-store add shells -t ~ -f .zshrc -f .bashrc
+$ store add shells -t ~ -f .zshrc -f .bashrc
 ```
 
-This creates individual symlinks: `~/.zshrc -> ~/dotfiles/shells/.zshrc` and `~/.bashrc -> ~/dotfiles/shells/.bashrc`.
-
-4. Add another target to the same store for files that live elsewhere:
+4. Add more targets to the same store:
 
 ```sh
-store target add shells -t ~/.config/fish -f config.fish
-store target add shells -t ~/.config/nushell -f config.nu
+$ store target add shells -t ~/.config/fish -f config.fish
+$ store target add shells -t ~/.config/nushell -f config.nu
 ```
 
-Now the `shells` store deploys to three different locations from a single directory.
-
-5. If files already existed at the target paths when you ran `store add`, store detected them and offered to move them into the store directories for you:
-
-```
-The following files conflict with store symlinks:
-  ~/.config/nvim (directory -> will be moved to ~/dotfiles/nvim)
-  ~/.zshrc (file -> will be moved to ~/dotfiles/shells/.zshrc)
-  ~/.bashrc (file -> will be moved to ~/dotfiles/shells/.bashrc)
-
-Move these files into the store and create symlinks? [y/N] y
-```
-
-Since the symlinks point back to the repo directories, your tools pick up the files seamlessly.
-
-6. Commit and push:
+5. Commit the repo:
 
 ```sh
-git add -A && git commit -m "add configs"
-git push
+$ git add -A
+$ git commit -m "add dotfiles"
+$ git push
 ```
 
-7. On a new machine, clone and restore all symlinks:
+6. Restore everything on a new machine:
 
 ```sh
-git clone https://github.com/you/dotfiles.git ~/dotfiles
-cd ~/dotfiles
-store
+$ git clone https://github.com/you/dotfiles.git ~/dotfiles
+$ cd ~/dotfiles
+$ store
 ```
 
-Running `store` with no subcommand creates symlinks for all stores defined in the config.
+If target files already exist, `store` detects the conflict, offers to move those files into the repo, and then creates the symlinks.
 
 ## Commands
 
+Run `store --help` for the full CLI tree. The command reference below documents every subcommand defined by the CLI.
+
 ### `store`
 
-Creates or restores symlinks for all stores in the config. This is the command you run after cloning your dotfiles repo on a new machine.
+Applies all configured stores. This is the default command you run after cloning a dotfiles repo on a new machine.
 
-**Flags:**
-
-| Flag      | Description                                      |
-| --------- | ------------------------------------------------ |
-| `--only`  | Only store specific entries by name (repeatable) |
-| `--force` | Create .bak backups without prompting            |
+| Flag | Short | Description |
+| --- | --- | --- |
+| `--only` |  | Apply only the named stores; repeatable |
+| `--force` |  | Create `.bak` backups without prompting when conflicts require overwriting files in the store |
 
 ```sh
-# Store only specific entries
 $ store --only nvim --only git
-
-# Automatically accept backup prompts
 $ store --force
 ```
 
-```sh
+```text
 $ store
 Storing all stores:
   nvim -> ~/.config/nvim
   shells -> ~ (files)
   shells -> ~/.config/fish (files)
   shells -> ~/.config/nushell (files)
-  git -> ~/.config/git
 ```
 
-If a symlink already exists and points to the correct source, it is left as-is. Broken symlinks are automatically replaced.
+How it works:
+
+- Filters out stores whose `when:` clause does not match the current platform.
+- Runs global `pre-store` and `post-store` hooks if present.
+- Detects conflicts before linking and prompts once for all selected stores.
+- Prompts for a secrets passphrase only if one of the selected stores needs template rendering.
 
 ### `store init`
 
-Initializes a new store config in the current directory. Creates `.store/config.yaml`.
+Creates `.store/config.yaml` in the current directory.
 
 ```sh
 $ store init
+```
+
+```text
 Initialized store config at .store/config.yaml
 ```
 
-Run this once at the root of your dotfiles repo.
+Use this once at the root of a new dotfiles repo.
+
+### `store import`
+
+Scans for existing symlinks that already point into the repo and imports them into `.store/config.yaml`.
+
+| Flag | Short | Description |
+| --- | --- | --- |
+| `--scan-dir` |  | Directory to scan for symlinks; repeatable; defaults to `~`, `~/.config`, `~/.local/share`, and `~/.local/bin` |
+| `--dry-run` |  | Print discovered imports without writing config |
+
+```sh
+$ store import --dry-run
+$ store import --scan-dir ~/.config --scan-dir ~/.local/bin
+```
+
+```text
+$ store import --dry-run
+Scanning for symlinks pointing into /home/user/dotfiles...
+
+Found:
+  nvim   ~/.config/nvim -> nvim/               (whole directory)
+  shells ~/.zshrc -> shells/.zshrc             (file)
+  shells ~/.bashrc -> shells/.bashrc           (file)
+
+Dry run: would import 3 symlinks as 2 stores
+```
+
+How it works:
+
+- Scans the immediate contents of each scan directory for symlinks.
+- Keeps only links whose targets resolve inside the repo and point at a top-level store directory.
+- Groups discovered links into single-target or multi-target store entries.
+- Skips stores that already exist in config.
+
+Relevant details:
+
+- Without `--dry-run`, `store import` prints the discovered mapping and asks for confirmation before writing config.
+- The persistent `--force` flag skips that confirmation prompt.
 
 ### `store add <name>`
 
-Adds a new store. Creates the directory if it doesn't exist, saves the entry to config, and creates symlinks if a target is provided.
+Creates a store directory if needed, adds the config entry, and immediately links it if a target is provided.
+
+| Flag | Short | Description |
+| --- | --- | --- |
+| `--target` | `-t` | Target path for the store |
+| `--files` | `-f` | Explicit files to link individually; repeatable |
+| `--patterns` | `-p` | Glob patterns to match files; repeatable; supports `**` |
 
 ```sh
-# Whole-directory symlink
 $ store add nvim -t ~/.config/nvim
-  nvim -> ~/.config/nvim
-
-# File-level symlinks with explicit files
-$ store add zsh -t ~ -f .zshrc -f .zshenv
-  zsh -> ~ (files)
-
-# File-level symlinks with glob patterns
-$ store add shell -t ~ -p ".zsh*" -p ".bash*"
-  shell -> ~ (files)
-
-# Recursive glob patterns
+$ store add shells -t ~ -f .zshrc -f .bashrc
 $ store add configs -t ~/.config -p "**/*.conf"
-  configs -> ~/.config (files)
-
-# Add to config without a target (configure later with modify)
-$ store add zsh
-Added zsh to config (no target set)
+$ store add git
 ```
 
-**Flags:**
+How it works:
 
-| Flag         | Short | Description                                              |
-| ------------ | ----- | -------------------------------------------------------- |
-| `--target`   | `-t`  | Target path for the symlink                              |
-| `--files`    | `-f`  | Explicit files to symlink (repeatable)                   |
-| `--patterns` | `-p`  | Glob patterns to match files (repeatable, supports `**`) |
-
-Target paths can use `~` for the home directory or absolute paths. Relative paths are automatically resolved to absolute paths.
+- Without `--target`, the store is saved but not linked yet.
+- Without `--files` or `--patterns`, the entire store directory is linked.
+- Relative targets are resolved to absolute paths before being saved.
 
 ### `store modify <name>`
 
-Updates fields on an existing store entry. Each flag replaces the entire field.
+Updates an existing single-target store. Each provided flag replaces the entire field.
+
+| Flag | Short | Description |
+| --- | --- | --- |
+| `--target` | `-t` | Replace the target path |
+| `--files` | `-f` | Replace the file list; repeatable |
+| `--patterns` | `-p` | Replace the pattern list; repeatable |
+| `--clear-files` |  | Remove all files from the entry |
+| `--clear-patterns` |  | Remove all patterns from the entry |
 
 ```sh
-# Change target path
 $ store modify nvim -t ~/.config/nvim-custom
-
-# Replace the file list
-$ store modify zsh -f .zshrc -f .zshenv -f .zprofile
-
-# Switch from files to patterns
-$ store modify zsh --clear-files -p ".zsh*"
-
-# Remove patterns (reverts to whole-directory symlink)
-$ store modify zsh --clear-patterns
+$ store modify shells --clear-files -p ".zsh*" -p ".bash*"
 ```
 
-Old symlinks are removed before the updated entry is applied.
+How it works:
 
-**Note:** For stores with multiple targets, use `store target modify` instead. `store modify` only works on single-target stores.
-
-**Flags:**
-
-| Flag               | Short | Description                        |
-| ------------------ | ----- | ---------------------------------- |
-| `--target`         | `-t`  | New target path                    |
-| `--files`          | `-f`  | Replace file list (repeatable)     |
-| `--patterns`       | `-p`  | Replace pattern list (repeatable)  |
-| `--clear-files`    |       | Remove all files from the entry    |
-| `--clear-patterns` |       | Remove all patterns from the entry |
+- Removes old symlinks before applying the updated config.
+- Re-links the store after saving the new entry.
+- Refuses to run on multi-target stores; use `store target modify` instead.
 
 ### `store target add <name>`
 
-Adds a new target to an existing store. If the store currently uses the single-target format, it is automatically migrated to the multi-target format.
+Adds another target to an existing store.
+
+| Flag | Short | Description |
+| --- | --- | --- |
+| `--target` | `-t` | Target path to add; required |
+| `--files` | `-f` | Explicit files to link individually; repeatable |
+| `--patterns` | `-p` | Glob patterns to match files; repeatable; supports `**` |
 
 ```sh
-# Add a second target to an existing store
 $ store target add shells -t ~/.config/fish -f config.fish
-  shells -> ~/.config/fish (files)
-
-# Add a target with patterns
 $ store target add shells -t ~/.config/nushell -p "*.nu"
-  shells -> ~/.config/nushell (files)
 ```
 
-**Flags:**
+How it works:
 
-| Flag         | Short | Description                                              |
-| ------------ | ----- | -------------------------------------------------------- |
-| `--target`   | `-t`  | Target path for the symlink (required)                   |
-| `--files`    | `-f`  | Explicit files to symlink (repeatable)                   |
-| `--patterns` | `-p`  | Glob patterns to match files (repeatable, supports `**`) |
+- Automatically migrates a single-target store to the `targets:` format.
+- Rejects duplicate target paths after normalizing `~` and absolute paths.
 
 ### `store target remove <name>`
 
-Removes a specific target from a store by its path. Symlinks for the removed target are unlinked. If only one target remains, the store is automatically migrated back to the single-target format.
+Removes one target from a store and unlinks that target's symlinks.
+
+| Flag | Short | Description |
+| --- | --- | --- |
+| `--target` | `-t` | Target path to remove; required |
 
 ```sh
 $ store target remove shells -t ~/.config/fish
-  removed target ~/.config/fish from shells
 ```
 
-**Flags:**
+```text
+removed target ~/.config/fish from shells
+```
 
-| Flag       | Short | Description                      |
-| ---------- | ----- | -------------------------------- |
-| `--target` | `-t`  | Target path to remove (required) |
+How it works:
+
+- Finds the target by normalized path.
+- Unlinks that target.
+- Migrates the store back to single-target format automatically if one target remains.
 
 ### `store target modify <name>`
 
-Modifies the files or patterns for a specific target within a store. The target is identified by its path. Each provided flag replaces the entire field.
+Updates the `files` or `patterns` for one target inside a multi-target store.
+
+| Flag | Short | Description |
+| --- | --- | --- |
+| `--target` | `-t` | Target path to modify; required |
+| `--files` | `-f` | Replace the file list; repeatable |
+| `--patterns` | `-p` | Replace the pattern list; repeatable |
+| `--clear-files` |  | Remove all files from the target |
+| `--clear-patterns` |  | Remove all patterns from the target |
 
 ```sh
-# Add a file to an existing target
 $ store target modify shells -t ~ -f .zshrc -f .bashrc -f .zprofile
-
-# Switch a target from files to patterns
-$ store target modify shells -t ~ --clear-files -p ".zsh*" -p ".bash*"
+$ store target modify shells -t ~/.config/nushell --clear-files -p "*.nu"
 ```
 
-Old symlinks for the target are removed before the updated entry is applied.
+How it works:
 
-**Flags:**
-
-| Flag               | Short | Description                         |
-| ------------------ | ----- | ----------------------------------- |
-| `--target`         | `-t`  | Target path to modify (required)    |
-| `--files`          | `-f`  | Replace file list (repeatable)      |
-| `--patterns`       | `-p`  | Replace pattern list (repeatable)   |
-| `--clear-files`    |       | Remove all files from the target    |
-| `--clear-patterns` |       | Remove all patterns from the target |
+- Removes old symlinks for the selected target first.
+- Re-links only the updated target after saving config.
 
 ### `store remove <name>`
 
-Removes the symlink(s) for the named store and deletes its config entry.
+Removes the store's symlinked targets and deletes the store entry from config.
 
 ```sh
 $ store remove nvim
+```
+
+```text
 Removed store nvim (~/.config/nvim)
 ```
 
-The store directory and its contents in your repo are not deleted -- only the symlinks and config entry are removed.
+The directory inside your repo is left untouched.
 
 ### `store removeall`
 
-Removes symlinks and config entries for all stores. If a particular store fails to remove (e.g., due to a conflict), its config entry is preserved and the remaining stores are still processed.
+Removes all configured store symlinks and deletes their config entries.
 
 ```sh
 $ store removeall
+```
+
+```text
 Removing all stores:
   removed nvim (~/.config/nvim)
-  removed shells (~)
-  removed shells (~/.config/fish)
-  removed shells (~/.config/nushell)
   removed git (~/.config/git)
 ```
+
+How it works:
+
+- Runs global `pre-remove` and `post-remove` hooks if present.
+- Continues removing other stores even if one store fails, then reports aggregated errors.
+
+### `store status [name]`
+
+Shows the current symlink state for one store or all stores.
+
+```sh
+$ store status
+$ store status nvim
+```
+
+```text
+$ store status
+  nvim                 [linked]   ~/.config/nvim
+  shells               .zshrc               [linked]   ~/.zshrc
+  shells               config.fish          [missing]  ~/.config/fish/config.fish
+  git                  [conflict] ~/.config/git
+```
+
+How it works:
+
+- In file mode, each linked file is reported separately.
+- When run without a name, stores filtered out by `when:` are omitted.
+
+### `store diff`
+
+Previews what `store` would do without changing anything.
+
+| Flag | Short | Description |
+| --- | --- | --- |
+| `--only` |  | Preview only the named stores; repeatable |
+
+```sh
+$ store diff
+$ store diff --only nvim --only git
+```
+
+```text
+$ store diff
+  nvim   ~/.config/nvim                     [ok]
+  shells .zshrc → ~/.zshrc                 [ok]
+  shells config.fish → ~/.config/fish/config.fish [create]
+  git    ~/.config/git                     [conflict]
+
+Summary: 2 ok, 1 to create, 1 conflict, 0 to replace
+```
+
+How it works:
+
+- Uses the same platform filtering as `store`.
+- Reports current targets as `ok`, `create`, `conflict`, `replace`, or `error`.
+- `replace` means a broken symlink would be removed and recreated.
+
+### `store doctor`
+
+Runs diagnostics against the current repo and reports errors, warnings, and informational issues.
+
+```sh
+$ store doctor
+```
+
+```text
+Checking store health...
+
+  [ok] 4 stores configured
+  [ok] all symlinks healthy
+
+  [info] directory "scratch" exists but is not configured as a store
+  [warn] secrets file not found but templates reference secrets
+
+2 issues found (1 warning, 1 info)
+```
+
+What it checks:
+
+- Config entries whose store directory is missing.
+- Top-level directories in the repo that are not configured as stores.
+- Broken symlinks.
+- Multiple stores claiming the same target path.
+- Missing secrets file or missing referenced secrets when `STORE_PASSPHRASE` is available.
+- Empty store directories.
+- Stores skipped on the current platform because of `when:`.
+
+Relevant details:
+
+- `store doctor` exits with an error only when it finds doctor-level errors.
+- Warnings and info are still printed but do not make the command fail.
 
 ### `store version`
 
@@ -340,424 +457,274 @@ Prints the current version.
 
 ```sh
 $ store version
-store version 0.9.0
-```
-
-The `--version` flag also works:
-
-```sh
 $ store --version
+```
+
+```text
 store version 0.9.0
 ```
 
-When built without a version (e.g., `go build ./cmd/store`), the version defaults to `dev`. Use the Makefile to build with a specific version:
-
-```sh
-make build VERSION=0.9.0
-```
-
-### `store status [name]`
-
-Shows the symlink status for one or all stores. For file-mode stores, each file is shown individually.
-
-```sh
-$ store status
-  nvim                 [linked]   ~/.config/nvim
-  shells               .zshrc               [linked]   ~/.zshrc
-  shells               .bashrc              [linked]   ~/.bashrc
-  shells               config.fish          [linked]   ~/.config/fish/config.fish
-  shells               config.nu            [linked]   ~/.config/nushell/config.nu
-  git                  [conflict] ~/.config/git
-```
-
-```sh
-$ store status nvim
-  nvim                 [linked]   ~/.config/nvim
-```
+If built without an injected version, the binary reports `dev`.
 
 ### `store secret set <name> [value]`
 
-Sets an encrypted secret. If value is omitted, prompts for it with hidden input.
+Creates or updates one encrypted secret.
 
 ```sh
-# Prompt for value
 $ store secret set github_token
-Enter passphrase: ****
-Enter secret value: ****
-
-# Provide value as argument
-$ store secret set api_key "your-secret-value"
-Enter passphrase: ****
+$ store secret set api_key "super-secret"
 ```
+
+How it works:
+
+- If `value` is omitted, `store` prompts for it with hidden input.
+- Reads the passphrase from `STORE_PASSPHRASE` or prompts interactively.
 
 ### `store secret get <name>`
 
-Prints the decrypted value of a secret.
+Prints one decrypted secret value.
 
 ```sh
 $ store secret get github_token
-Enter passphrase: ****
-your-secret-value
 ```
 
 ### `store secret rm <name>`
 
-Removes a secret from the encrypted store.
+Deletes one secret from `.store/secrets.enc`.
 
 ```sh
 $ store secret rm github_token
-Enter passphrase: ****
-Removed secret github_token
 ```
 
 ### `store secret list`
 
-Lists all secret names (not values), sorted alphabetically.
+Lists secret names in sorted order.
 
 ```sh
 $ store secret list
-Enter passphrase: ****
-api_key
-github_token
 ```
 
-All secret commands prompt for a passphrase or read it from the `STORE_PASSPHRASE` environment variable.
+Relevant details for all secret commands:
+
+- Secrets are stored in `.store/secrets.enc`.
+- Secret names are listed; secret values are never listed.
+- See [Secrets](#secrets) for template rendering details.
+
+### `store completion [bash|zsh|fish|powershell]`
+
+Generates a shell completion script for the selected shell.
+
+```sh
+$ store completion bash
+$ store completion zsh
+$ store completion fish
+```
+
+Use it with the install instructions in [Shell Completion](#shell-completion).
 
 ## Config Format
 
-Configuration is stored in `.store/config.yaml` at the root of your repository:
+Configuration lives in `.store/config.yaml`.
 
-#### Single-target format
-
-The simplest format maps a store to one target path:
+Single-target format:
 
 ```yaml
 stores:
   nvim:
-    target: ~/.config/nvim
-  zsh:
-    target: ~
+    target: "~/.config/nvim"
+  shells:
+    target: "~"
     files:
       - .zshrc
-      - .zshenv
-  git:
-    target: ~/.config/git
-  tmux:
-    target: ~/.config/tmux
+      - .bashrc
+    ignore:
+      - "*.bak"
     hooks:
-      post: "tmux source-file ~/.config/tmux/tmux.conf 2>/dev/null || true"
+      post: "printf 'shells linked\n'"
+    when:
+      os: linux
 ```
 
-#### Multi-target format
-
-A store can deploy to multiple target paths using the `targets` list. Each entry has its own `target`, `files`, and `patterns`:
+Multi-target format:
 
 ```yaml
 stores:
-  nvim:
-    target: ~/.config/nvim
   shells:
     targets:
-      - target: ~
+      - target: "~"
         files:
           - .zshrc
           - .bashrc
-      - target: ~/.config/fish
+      - target: "~/.config/fish"
         files:
           - config.fish
-      - target: ~/.config/nushell
+      - target: "~/.config/nushell"
         patterns:
           - "*.nu"
-  git:
-    target: ~/.config/git
+        ignore:
+          - "*.bak"
 ```
 
-Using both `target` and `targets` on the same store entry is invalid.
+Rules:
 
-Files containing `{{ secret "name" }}` placeholders are automatically detected and rendered during store operations. No configuration changes are needed.
+- A store may use either `target` or `targets`, not both.
+- In multi-target mode, `files`, `patterns`, and `ignore` belong inside each `targets[]` entry.
+- If a store entry has no target yet, it is valid config but nothing is linked.
 
-Each entry maps a store name (a directory in your repo) to one or more target paths (where symlinks are created). The `ignore:` field can be used on both top-level store entries and individual targets in multi-target mode to exclude specific files from being symlinked.
+### Top-level store fields
 
-### Entry Fields
+| Field | Required | Description |
+| --- | --- | --- |
+| `target` | No | Target path for a single-target store |
+| `files` | No | Explicit list of files to link individually |
+| `patterns` | No | Glob patterns to match files; supports `**` |
+| `ignore` | No | Glob patterns to exclude from linking |
+| `hooks` | No | Per-store `pre` and `post` shell commands |
+| `when` | No | Platform filter for this store |
+| `targets` | No | List of per-target entries for multi-target mode |
 
-#### Single-target fields
+### Nested `targets[]` fields
 
-| Field      | Required | Description                                                                                   |
-| ---------- | -------- | --------------------------------------------------------------------------------------------- |
-| `target`   | No       | Where symlinks are created. Without a target, the entry is saved but no symlinks are created. |
-| `files`    | No       | Explicit list of files to symlink individually.                                               |
-| `patterns` | No       | Glob patterns to match files. Supports `*`, `?`, `[...]`, and `**` for recursive matching.    |
-| `ignore`   | No       | List of glob patterns to exclude from symlinking.                                             |
-| `when`     | No       | Platform conditions for this store. See [Platform Conditionals](#platform-conditionals).      |
-| `hooks`    | No       | Pre/post shell commands to run around store operations. See [Hooks](#hooks).                  |
+| Field | Required | Description |
+| --- | --- | --- |
+| `targets[].target` | Yes | Target path for this target entry |
+| `targets[].files` | No | Explicit files to link individually for this target |
+| `targets[].patterns` | No | Glob patterns to match files for this target |
+| `targets[].ignore` | No | Glob patterns to exclude for this target |
 
-#### Multi-target fields
+### `hooks` fields
 
-| Field                | Required | Description                                                                  |
-| -------------------- | -------- | ---------------------------------------------------------------------------- |
-| `targets`            | No       | List of target entries, each with its own `target`, `files`, and `patterns`. |
-| `targets[].target`   | Yes      | Where symlinks are created for this target entry.                            |
-| `targets[].files`    | No       | Explicit list of files to symlink individually for this target.              |
-| `targets[].patterns` | No       | Glob patterns to match files for this target.                                |
-| `targets[].ignore`   | No       | List of glob patterns to exclude from symlinking for this target.            |
+| Field | Required | Description |
+| --- | --- | --- |
+| `hooks.pre` | No | Command run before link or unlink work for the store |
+| `hooks.post` | No | Command run after link or unlink work for the store |
 
-**Behavior:**
+### `when` fields
 
-- **No `files` or `patterns`:** The entire store directory is symlinked to the target (whole-directory mode).
-- **`files` and/or `patterns` specified:** Only matched files are symlinked individually. Directory structure is preserved at the target.
-- **Both `files` and `patterns`:** Results are combined and deduplicated.
+| Field | Required | Description |
+| --- | --- | --- |
+| `when.os` | No | OS name such as `linux`, `darwin`, or `windows` |
+| `when.arch` | No | CPU architecture such as `amd64` or `arm64` |
+| `when.distro` | No | Distro or OS family such as `ubuntu`, `arch`, `macos`, or `windows` |
+| `when.distro_version` | No | Distro version string |
+| `when.hostname` | No | Hostname to match |
+| `when.shell` | No | Current shell name such as `zsh`, `bash`, `fish`, or `nu` |
+| `when.wsl` | No | Whether the machine is running under WSL |
 
-These rules apply independently to each target in a multi-target store. One target can use whole-directory mode while another uses file-level symlinks.
+### Matching and mode behavior
 
-### Pattern Syntax
+- No `files` and no `patterns`: whole-directory mode.
+- Any `files` or `patterns`: file mode.
+- `files` and `patterns` can be used together; matches are combined and deduplicated.
+- `ignore` applies in both explicit file mode and pattern mode.
+- If whole-directory mode would include ignored content, `store` automatically promotes that target to file mode.
 
-Patterns use standard glob syntax with recursive matching support:
+### Pattern syntax
 
-| Pattern          | Matches                                    |
-| ---------------- | ------------------------------------------ |
-| `.zsh*`          | `.zshrc`, `.zshenv`, etc. at the top level |
-| `*.conf`         | All `.conf` files at the top level         |
-| `**/*.conf`      | All `.conf` files at any depth             |
-| `config/*.lua`   | `.lua` files inside `config/`              |
-| `**/*.{lua,vim}` | `.lua` and `.vim` files at any depth       |
+| Pattern | Matches |
+| --- | --- |
+| `.zsh*` | `.zshrc`, `.zshenv`, and similar top-level files |
+| `*.conf` | Top-level `.conf` files |
+| `**/*.conf` | `.conf` files at any depth |
+| `config/*.lua` | `.lua` files directly inside `config/` |
+| `**/*.{lua,vim}` | `.lua` and `.vim` files recursively |
 
-### Target Path Formats
+### Target path rules
 
-- `~` prefix -- expanded to the user's home directory (e.g., `~/.config/nvim`). **Must be quoted in YAML** (`target: "~"`) to avoid being interpreted as null by the YAML parser. Portable across machines.
-- Absolute paths -- used as-is (e.g., `/home/user/.config/nvim`).
-
-Relative paths provided via `--target` are automatically converted to absolute paths.
+- `~` and `~/...` are supported on the CLI and in config.
+- In YAML, every `~` path must be quoted, for example `target: "~"` or `target: "~/.config/nvim"`.
+- Relative CLI target paths are resolved to absolute paths before being saved.
 
 ## Hooks
 
-Hooks let you run shell commands before or after store operations. There are two levels: per-store hooks defined in `config.yaml`, and global hooks defined as scripts in `.store/hooks/`.
+Hooks let you run shell commands around store operations. Use them for post-link reloads, cache rebuilds, or validation steps tied to a specific store or to the whole repo.
 
-### Per-store hooks
-
-Add a `hooks` field to any store entry with `pre` and/or `post` commands:
+Per-store hook example:
 
 ```yaml
 stores:
   tmux:
-    target: ~/.config/tmux
+    target: "~/.config/tmux"
     hooks:
       post: "tmux source-file ~/.config/tmux/tmux.conf 2>/dev/null || true"
   nvim:
-    target: ~/.config/nvim
+    target: "~/.config/nvim"
     hooks:
       pre: "nvim --headless -c 'checkhealth' -c 'qa' 2>/dev/null"
-      post: "echo 'NeoVim config linked'"
 ```
 
-Per-store hooks run around that specific store's symlink operations. The `pre` hook runs before linking/unlinking, and `post` runs after. Commands are executed via `sh -c`.
+Global hook layout:
 
-| Hook   | On failure                          |
-| ------ | ----------------------------------- |
-| `pre`  | Aborts the operation for that store |
-| `post` | Prints a warning, does not abort    |
-
-### Global hooks
-
-Place executable scripts in `.store/hooks/` to run before or after commands that operate on all stores:
-
-```
+```text
 .store/hooks/
-  pre-store       # runs before store/storeall linking
-  post-store      # runs after store/storeall linking
-  pre-remove      # runs before removeall unlinking
-  post-remove     # runs after removeall unlinking
+  pre-store
+  post-store
+  pre-remove
+  post-remove
 ```
 
-Global hooks must be executable (`chmod +x`). Non-executable files are silently skipped.
+How it works:
 
-| Hook          | On failure                       |
-| ------------- | -------------------------------- |
-| `pre-store`   | Aborts the entire command        |
-| `pre-remove`  | Aborts the entire command        |
-| `post-store`  | Prints a warning, does not abort |
-| `post-remove` | Prints a warning, does not abort |
+- Per-store hooks are configured in YAML and executed with `sh -c`.
+- Global hooks are executable files in `.store/hooks/` and are run directly.
+- Global hook scripts must have the executable bit set; non-executable files are ignored.
 
-### Execution order
+Relevant details:
 
-For a command like `store` (storeall):
-
-1. `.store/hooks/pre-store` (global)
-2. For each store entry:
-   - `hooks.pre` (per-store -- skip this store on failure)
-   - Create symlinks
-   - `hooks.post` (per-store -- warn on failure)
-3. `.store/hooks/post-store` (global)
-
-### Environment variables
-
-All hooks receive the following environment variables:
-
-| Variable               | Description                                      |
-| ---------------------- | ------------------------------------------------ |
-| `STORE_ROOT`           | Absolute path to the repository root             |
-| `STORE_ACTION`         | `link` or `unlink`                               |
-| `STORE_NAME`           | Store entry name (per-store hooks only)          |
-| `STORE_TARGET`         | Target path for the store (per-store hooks only) |
-| `STORE_OS`             | Operating system (linux, darwin, windows)        |
-| `STORE_ARCH`           | CPU architecture (amd64, arm64)                  |
-| `STORE_DISTRO`         | Distribution (ubuntu, arch, macos, etc.)         |
-| `STORE_DISTRO_VERSION` | Distribution version (24.04, rolling, etc.)      |
-| `STORE_HOSTNAME`       | Machine hostname                                 |
-| `STORE_WSL`            | Whether running in WSL (true/false)              |
-| `STORE_SHELL`          | Current shell (zsh, bash, fish, nu)              |
+- `pre` hooks abort that store on failure.
+- `post` hooks only warn on failure.
+- `pre-store` and `pre-remove` abort the whole command on failure.
+- Hooks receive `STORE_ROOT`, `STORE_ACTION`, and detected platform variables; per-store hooks also receive `STORE_NAME` and `STORE_TARGET`.
 
 ## Secrets
 
-Config files often contain secrets like API keys, tokens, or passwords. `store` encrypts these secrets so your dotfiles repository can remain public while keeping sensitive data secure.
+Secrets let you keep encrypted values in the repo while rendering those values into linked files locally at apply time.
 
-### Template syntax
+Template example:
 
-Use the `{{ secret "name" }}` placeholder in any file within a store. For example, a `.gitconfig` template:
-
+```yaml
+stores:
+  git:
+    target: "~/.config/git"
+    files:
+      - .gitconfig
 ```
+
+```text
 [github]
-	token = {{ secret "github_token" }}
+    token = {{ secret "github_token" }}
 ```
 
-### How it works
-
-- Secrets are stored encrypted in `.store/secrets.enc` using argon2id for key derivation and XChaCha20-Poly1305 for authenticated encryption.
-- When `store` creates symlinks, files containing `{{ secret "..." }}` are rendered with their decrypted values.
-- Rendered files are stored in a local staging directory and symlinked from there.
-- Non-template files are symlinked directly from the repository as usual.
-- The passphrase is read from the `STORE_PASSPHRASE` environment variable or prompted interactively with hidden input.
-
-### Quick start workflow
-
-1. Add a secret to the encrypted store:
+Usage example:
 
 ```sh
 $ store secret set github_token
-Enter passphrase: ****
-Enter secret value: ****
-```
-
-2. Use the secret in a config file:
-
-```sh
-$ echo 'token = {{ secret "github_token" }}' > git/.gitconfig
-```
-
-3. Run `store` to render templates and create symlinks:
-
-```sh
 $ store
-Enter passphrase: ****
-Storing all stores:
-  git -> ~/.config/git (files)
 ```
 
-4. On a new machine, clone and restore:
+How it works:
 
-```sh
-$ git clone ~/dotfiles && cd ~/dotfiles
-$ store
-Enter passphrase: ****
-```
+- Template placeholders use `{{ secret "name" }}`.
+- `store` scans the selected store directories and only prompts for a passphrase if rendering is needed.
+- Secrets are stored in `.store/secrets.enc`.
+- Rendered files are written into a local staging directory under `$XDG_STATE_HOME/store/<repo-hash>/` or `~/.local/state/store/<repo-hash>/` if `XDG_STATE_HOME` is unset.
+- Files without secret placeholders are symlinked directly; rendered files are symlinked from the staging directory.
 
-### Environment variable
+Relevant details:
 
-Set `STORE_PASSPHRASE` to avoid interactive prompts. This is useful for scripts or CI/CD environments.
-
-```sh
-export STORE_PASSPHRASE="your-secure-passphrase"
-store
-```
-
-### Staging directory
-
-Rendered files are stored at `$XDG_STATE_HOME/store/<hash>/`, which defaults to `~/.local/state/store/`. These files are local to the machine and should not be committed to your repository.
-
-### Security note
-
-The encrypted secrets file (`.store/secrets.enc`) is safe to commit to your repository. It uses industry-standard encryption to protect your data.
+- Encryption uses Argon2id for key derivation and XChaCha20-Poly1305 for authenticated encryption.
+- If a referenced secret is missing, the render step fails and the store operation stops.
+- The passphrase comes from `STORE_PASSPHRASE` or hidden interactive input.
+- `.store/secrets.enc` is designed to be committed; the plaintext secrets are not.
 
 ## Platform Conditionals
 
-Different machines often need different configurations. The `when:` clause lets you target stores to specific platforms.
+Platform conditionals let one repo serve multiple machines without separate branches or manual edits.
 
-### Config syntax
-
-Add the `when:` field to any store entry to define platform requirements:
+Example:
 
 ```yaml
 stores:
-  # Linux-only store
-  apt-configs:
-    target: ~/.config/apt
-    when:
-      os: linux
-
-  # macOS-only store
-  brew-configs:
-    target: ~/.config/brew
-    when:
-      os: darwin
-
-  # Distro-specific store
-  ubuntu-packages:
-    target: ~/scripts
-    files:
-      - install-ubuntu.sh
-    when:
-      distro: ubuntu
-
-  # Hostname-specific
-  work-scripts:
-    target: ~/work
-    when:
-      hostname: work-laptop
-
-  # WSL-specific
-  wsl-tools:
-    target: ~/.local/bin
-    when:
-      wsl: true
-
-  # Combined conditions (Linux + arm64)
-  raspberry-pi:
-    target: ~/pi-configs
-    when:
-      os: linux
-      arch: arm64
-```
-
-### Available conditions
-
-| Field            | Description                                    | Possible Values                                |
-| ---------------- | ---------------------------------------------- | ---------------------------------------------- |
-| `os`             | Operating system                               | `linux`, `darwin`, `windows`                   |
-| `arch`           | CPU architecture                               | `amd64`, `arm64`, `arm`, etc.                  |
-| `distro`         | Linux distribution or OS name                  | `ubuntu`, `fedora`, `arch`, `macos`, `windows` |
-| `distro_version` | Version of the distribution                    | `24.04`, `rolling`, etc.                       |
-| `hostname`       | Machine hostname                               | Any valid hostname                             |
-| `shell`          | Current shell                                  | `zsh`, `bash`, `fish`, `nu`                    |
-| `wsl`            | Whether running in Windows Subsystem for Linux | `true`, `false`                                |
-
-### Matching behavior
-
-- **AND logic**: All specified fields must match for the store to be applied.
-- **Unset fields**: Any field not specified matches everything.
-- **Default**: Stores without a `when:` clause always apply.
-- **Filtering**: Non-matching stores are silently skipped during `store` and `store status` operations.
-
-### Example multi-platform setup
-
-```yaml
-stores:
-  # Common configs for all machines
-  common:
-    target: "~"
-    files:
-      - .gitconfig
-      - .vimrc
-
-  # Linux-specific shell configs
   linux-shell:
     target: "~"
     files:
@@ -765,107 +732,143 @@ stores:
     when:
       os: linux
 
-  # macOS-specific shell configs
-  macos-shell:
-    target: "~"
-    files:
-      - .zshrc
-    when:
-      os: darwin
-
-  # Work-only scripts
   work-tools:
     target: "~/work"
     when:
       hostname: work-laptop
+
+  wsl-tools:
+    target: "~/.local/bin"
+    when:
+      wsl: true
 ```
+
+How it works:
+
+- `store` compares each populated `when:` field against detected platform info.
+- All specified fields must match.
+- Stores without `when:` always apply.
+
+Relevant details:
+
+- Detected values include OS, arch, distro, distro version, hostname, shell, and WSL state.
+- Commands that operate on the configured set, such as `store`, `store diff`, and `store status`, skip non-matching stores.
+- `store doctor` reports skipped stores as informational issues so you can confirm the filter is doing what you expect.
 
 ## Ignoring Files
 
-Exclude files and directories from being symlinked using the `ignore:` field. This is useful for nested stores, scratch files, or editor backups.
+Ignore patterns exclude files or directories from linking. This is useful for editor backups, nested metadata, scratch files, or partial stores that should not be exposed at the target.
 
-### Global Defaults
-
-The following patterns are always excluded automatically. You don't need to manually ignore them:
-
-- `.store/`
-- `.git/`
-- `.gitignore`
-- `.DS_Store`
-
-### Config Syntax
-
-The `ignore:` field accepts a list of glob patterns. It can be used on both top-level store entries and individual targets in multi-target mode.
+Example:
 
 ```yaml
 stores:
   nvim:
-    target: ~/.config/nvim
+    target: "~/.config/nvim"
     ignore:
       - "*.bak"
       - "scratch/"
       - "**/*.test.lua"
 ```
 
-### Auto-promotion
+How it works:
 
-When a store is in whole-directory mode (no `files` or `patterns` specified), it normally creates a single symlink for the entire directory. If the directory contains ignored content (either via global defaults like `.git/` or explicit `ignore:` patterns), the store is automatically promoted to file mode.
+- Global ignore patterns are always active: `.store`, `.store/**`, `.git`, `.git/**`, `.gitignore`, `.DS_Store`.
+- User-defined `ignore:` patterns are added on top of the global ignore set.
+- Directory ignore patterns such as `scratch/` exclude the whole directory tree.
 
-In file mode, the target becomes a real directory, and `store` creates individual symlinks for every non-ignored file and directory inside the store. This ensures that ignored files never appear at the target location.
+Relevant details:
 
-### Nested Stores
+- Ignore matching uses the same glob engine as `patterns:`.
+- If a target has `ignore:` or if the store contains globally ignored files, whole-directory mode is automatically promoted to file mode so ignored content never appears at the target.
+- `ignore:` may be defined at the top level for single-target stores or inside each `targets[]` entry for multi-target stores.
 
-A common use case for ignore patterns is nested stores. If a store directory contains its own `.store/` directory for sub-stores, the inner `.store/` is automatically excluded by the global defaults. This allows you to organize complex configurations hierarchically without accidentally symlinking configuration metadata.
+## Shell Completion
 
-### Pattern Syntax
+`store completion` generates completion scripts for supported shells. This is the easiest way to make the command and store-name arguments discoverable from the terminal.
 
-The `ignore:` field uses the same glob syntax as the `patterns:` field. It supports `*`, `**`, and `?` for flexible matching. See [Pattern Syntax](#pattern-syntax) for more details.
+Install examples:
+
+### Bash
+
+```sh
+$ mkdir -p ~/.local/share/bash-completion/completions
+$ store completion bash > ~/.local/share/bash-completion/completions/store
+```
+
+### Zsh
+
+```sh
+$ store completion zsh > "${fpath[1]}/_store"
+```
+
+### Fish
+
+```sh
+$ mkdir -p ~/.config/fish/completions
+$ store completion fish > ~/.config/fish/completions/store.fish
+```
+
+### PowerShell
+
+```sh
+$ store completion powershell | Out-String | Invoke-Expression
+```
+
+How it works:
+
+- The CLI generates shell-native completion scripts through Cobra.
+- Existing store names are offered as tab completions for commands that take a configured store name, such as `modify`, `remove`, `status`, and `target` subcommands.
+
+Relevant details:
+
+- If your shell requires an explicit completion system bootstrap, enable that in the shell separately.
+- Regenerate the script after upgrading `store` if you want completion descriptions and command trees to stay current.
 
 ## Status Indicators
 
-| Status       | Meaning                                                                                                                                       |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `[linked]`   | Symlink exists and points to the correct store directory or file.                                                                             |
-| `[missing]`  | No symlink exists at the target path. Run `store` to create it.                                                                               |
-| `[conflict]` | Something exists at the target path but it is not a symlink managed by store. Running `store` will offer to move it into the store directory. |
-| `[broken]`   | A symlink exists but its destination no longer exists. Running `store` will replace it.                                                       |
+| Status | Meaning |
+| --- | --- |
+| `[linked]` | A symlink exists and points to the expected source |
+| `[missing]` | No symlink exists yet |
+| `[conflict]` | A non-store file or directory exists where `store` wants to link |
+| `[broken]` | A symlink exists but points to a missing source |
+
+These statuses appear in `store status`, and the same underlying states drive `store diff`.
 
 ## How It Works
 
-- **Root discovery:** Commands can be run from any subdirectory. `store` walks up the directory tree to find the nearest `.store/` directory, similar to how `git` finds `.git/`.
-- **Symlinks are absolute:** When creating symlinks, source paths are resolved to absolute paths. This means symlinks work regardless of your working directory.
-- **Conflict resolution:** Before creating symlinks, `store` checks all target paths for conflicts. If files or directories already exist that aren't managed by store, it lists them and offers to move them into the store directory automatically. For directory conflicts, the contents are merged into the store directory. If any files already exist in the store directory, they are listed and a separate confirmation is required before creating `.bak` backups. Use `--force` to skip the backup confirmation.
-- **Broken symlink recovery:** If a symlink exists but points to a nonexistent path, `store` removes it and creates a fresh one pointing to the correct source.
-- **Hooks:** Per-store hooks (`hooks.pre`/`hooks.post` in config) run around individual store operations. Global hooks (executable scripts in `.store/hooks/`) run around commands that operate on all stores. Pre-hooks can abort the operation; post-hooks only warn on failure.
-- **File matching performance:** Explicit `files` entries are validated with a single stat call each (no directory walking). Simple glob patterns use `Glob` without recursive traversal. Only `**` patterns trigger a full directory walk, using the efficient `WalkDir` API.
+- **Root discovery:** commands can run from any subdirectory inside the repo; `store` walks upward until it finds `.store/`.
+- **Portable target storage:** CLI target paths keep `~` prefixes when possible so config stays portable across machines.
+- **Absolute symlinks:** link targets are resolved to absolute source paths so the working directory does not matter.
+- **Conflict resolution:** before linking, `store` detects files or directories already occupying the target and offers to move them into the repo. If files already exist in the store where moved content would land, `store` lists the `.bak` backups it would create.
+- **Whole-directory vs file mode:** no `files` or `patterns` means whole-directory mode unless ignored content forces promotion to file mode.
+- **Template staging:** secret-backed templates are rendered into a machine-local staging directory and linked from there.
+- **Performance:** explicit files use direct stat checks, non-recursive globs avoid full walks, and only `**` patterns trigger recursive traversal.
 
 ## Troubleshooting
 
-### Target path is `~` but store says "no target configured"
+### `target: ~` does not work in YAML
 
-In YAML, a bare `~` is a null value. If you write:
-
-```yaml
-stores:
-  nvim:
-    target: ~
-```
-
-The ~ is parsed as null (empty string in Go), and store treats it as configured. **Quote the tilde**:
+Bare `~` is YAML null, not a string. Quote every `~` path:
 
 ```yaml
 stores:
-  nvim:
+  shell:
     target: "~"
 ```
 
-This is a YAML semantic -- the same applies to any other tool using YAML config files.
+The same rule applies to paths such as `"~/.config/nvim"`.
 
-### Conflicts: files already exist at the target path
+### `store` says there is no `.store` directory
 
-When files or directories already exist where `store` wants to create symlinks, you'll see a prompt:
+Run the command inside a repo initialized with `store init`, or initialize the current directory first.
 
-```
+### Existing files already occupy the target path
+
+`store` reports conflicts before linking and offers to move those files into the store.
+
+```text
 The following files conflict with store symlinks:
   ~/.config/nvim (directory -> will be moved to ~/dotfiles/nvim)
   ~/.zshrc (file -> will be moved to ~/dotfiles/shells/.zshrc)
@@ -873,25 +876,12 @@ The following files conflict with store symlinks:
 Move these files into the store and create symlinks? [y/N]
 ```
 
-Answering **y** moves the conflicting files into your store directories and creates the symlinks. This is useful when setting up on a machine that already has config files -- the existing files become the store-managed versions.
+If files already exist inside the store where moved content would land, `store` asks before creating `.bak` backups. Use `--force` to skip that backup confirmation.
 
-If files already exist in the store directory, they are listed and a separate prompt asks for confirmation before creating `.bak` backups:
+### `store diff` shows `replace`
 
-```
-The following files in the store will be backed up (.bak):
-  ~/dotfiles/nvim/init.lua
+`replace` means the target is currently a broken symlink. Running `store` will remove it and recreate it correctly.
 
-Proceed with creating backups? [y/N]
-```
+### `store doctor` warns about secrets
 
-Use `--force` to skip this prompt (backups are still listed so you can clean them up afterward).
-
-Answering **N** (the default) aborts the operation with no changes made.
-
-### "[broken]" status
-
-The symlink exists but points to a directory that no longer exists. This can happen if the store directory was renamed or deleted. Running `store` will automatically replace broken symlinks.
-
-### "no .store directory found"
-
-You're not inside a repository that has been initialized with `store init`. Either `cd` into your dotfiles repo or run `store init` to set one up.
+If templates reference secrets and `.store/secrets.enc` is missing, doctor warns immediately. If the secrets file exists, set `STORE_PASSPHRASE` before running `store doctor` if you want it to verify that referenced secret names are actually present.
