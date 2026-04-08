@@ -7,13 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/cushycush/store/internal/config"
+	"github.com/cushycush/store/internal/hooks"
+	"github.com/cushycush/store/internal/linker"
+	storeops "github.com/cushycush/store/internal/store"
 	"github.com/spf13/cobra"
-
-	"github.com/cush/store/internal/config"
-	"github.com/cush/store/internal/hooks"
-	"github.com/cush/store/internal/linker"
-	storeops "github.com/cush/store/internal/store"
 )
 
 var (
