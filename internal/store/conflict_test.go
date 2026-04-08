@@ -110,6 +110,32 @@ func TestCollectTargetConflicts(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "whole directory auto promotion checks file conflicts",
+			setup: func(t *testing.T, root string) config.TargetEntry {
+				t.Helper()
+				createStore(t, root, "app", map[string]string{
+					"keep.txt":           "keep",
+					".store/config.yaml": "ignored",
+				})
+				target := filepath.Join(root, "targets", "auto")
+				writeTestFile(t, filepath.Join(target, "keep.txt"), "target-keep")
+				return config.TargetEntry{Target: target}
+			},
+			wantCount: 1,
+			check: func(t *testing.T, root string, conflicts []ConflictInfo) {
+				t.Helper()
+				if conflicts[0].Source != filepath.Join(root, "app", "keep.txt") {
+					t.Fatalf("Source = %q, want keep.txt source", conflicts[0].Source)
+				}
+				if conflicts[0].Target != filepath.Join(root, "targets", "auto", "keep.txt") {
+					t.Fatalf("Target = %q, want keep.txt target", conflicts[0].Target)
+				}
+				if conflicts[0].IsDir {
+					t.Fatalf("IsDir = true, want false")
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

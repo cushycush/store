@@ -151,11 +151,13 @@ func TestStoreEntryResolvedTargets(t *testing.T) {
 				Target:   "~",
 				Files:    []string{".zshrc"},
 				Patterns: []string{".bash*"},
+				Ignore:   []string{"*.bak"},
 			},
 			want: []TargetEntry{{
 				Target:   "~",
 				Files:    []string{".zshrc"},
 				Patterns: []string{".bash*"},
+				Ignore:   []string{"*.bak"},
 			}},
 		},
 		{
@@ -304,12 +306,17 @@ func TestStoreEntryValidate(t *testing.T) {
 		{
 			name:    "top level files with targets",
 			entry:   StoreEntry{Files: []string{".zshrc"}, Targets: []TargetEntry{{Target: "~"}}},
-			wantErr: "cannot use top-level 'files' or 'patterns' with 'targets'; place them inside each target entry",
+			wantErr: "cannot use top-level 'files', 'patterns', or 'ignore' with 'targets'; place them inside each target entry",
 		},
 		{
 			name:    "top level patterns with targets",
 			entry:   StoreEntry{Patterns: []string{"*.fish"}, Targets: []TargetEntry{{Target: "~/.config/fish"}}},
-			wantErr: "cannot use top-level 'files' or 'patterns' with 'targets'; place them inside each target entry",
+			wantErr: "cannot use top-level 'files', 'patterns', or 'ignore' with 'targets'; place them inside each target entry",
+		},
+		{
+			name:    "top level ignore with targets",
+			entry:   StoreEntry{Ignore: []string{"*.bak"}, Targets: []TargetEntry{{Target: "~/.config/fish"}}},
+			wantErr: "cannot use top-level 'files', 'patterns', or 'ignore' with 'targets'; place them inside each target entry",
 		},
 		{
 			name:    "missing target path in targets list",
@@ -365,6 +372,7 @@ func TestStoreEntryMigrateToMultiTarget(t *testing.T) {
 				Target:   "~",
 				Files:    []string{".zshrc"},
 				Patterns: []string{".bash*"},
+				Ignore:   []string{"*.bak"},
 				Hooks:    &HookEntry{Post: "echo done"},
 			},
 			want: StoreEntry{
@@ -372,6 +380,7 @@ func TestStoreEntryMigrateToMultiTarget(t *testing.T) {
 					Target:   "~",
 					Files:    []string{".zshrc"},
 					Patterns: []string{".bash*"},
+					Ignore:   []string{"*.bak"},
 				}},
 				Hooks: &HookEntry{Post: "echo done"},
 			},
@@ -416,6 +425,7 @@ func TestStoreEntryMigrateToSingleTarget(t *testing.T) {
 					Target:   "~",
 					Files:    []string{".zshrc"},
 					Patterns: []string{".bash*"},
+					Ignore:   []string{"*.bak"},
 				}},
 				Hooks: &HookEntry{Pre: "echo pre"},
 			},
@@ -423,6 +433,7 @@ func TestStoreEntryMigrateToSingleTarget(t *testing.T) {
 				Target:   "~",
 				Files:    []string{".zshrc"},
 				Patterns: []string{".bash*"},
+				Ignore:   []string{"*.bak"},
 				Hooks:    &HookEntry{Pre: "echo pre"},
 			},
 		},
@@ -468,13 +479,14 @@ func TestConfigLoadSaveRoundTrip(t *testing.T) {
 		Stores: map[string]StoreEntry{
 			"git": {
 				Target: "~/.config/git",
+				Ignore: []string{"*.bak"},
 				Hooks:  &HookEntry{Post: "git config --global include.path ~/.config/git/config"},
 				When:   &WhenClause{OS: "linux", Shell: "zsh"},
 			},
 			"shells": {
 				Targets: []TargetEntry{
-					{Target: "~", Files: []string{".zshrc", ".bashrc"}},
-					{Target: "~/.config/fish", Patterns: []string{"*.fish"}},
+					{Target: "~", Files: []string{".zshrc", ".bashrc"}, Ignore: []string{"*.bak"}},
+					{Target: "~/.config/fish", Patterns: []string{"*.fish"}, Ignore: []string{"scratch/"}},
 				},
 			},
 		},

@@ -51,6 +51,7 @@ All configuration lives in a single `.store/config.yaml` file that you commit al
 | **Setup on new machine**  | Run `stow` per package from the correct parent directory      | Run `store` from anywhere in the repo                                         |
 | **Secret management**     | No built-in support                                           | Encrypted secrets with template rendering                                     |
 | **Platform conditionals** | No built-in support                                           | `when:` clause for OS/arch/distro/hostname filtering                          |
+| **Ignore patterns**       | Requires manual exclusion or separate packages                | Built-in ignore with global defaults                                          |
 
 ## Installation
 
@@ -65,7 +66,7 @@ go install github.com/cush/store/cmd/store@latest
 ```sh
 git clone https://github.com/cush/store.git
 cd store
-make build VERSION=0.8.0
+make build VERSION=0.9.0
 # Move the binary somewhere in your PATH
 mv store /usr/local/bin/
 ```
@@ -339,27 +340,27 @@ Prints the current version.
 
 ```sh
 $ store version
-store version 0.8.0
+store version 0.9.0
 ```
 
 The `--version` flag also works:
 
 ```sh
 $ store --version
-store version 0.8.0
+store version 0.9.0
 ```
 
 When built without a version (e.g., `go build ./cmd/store`), the version defaults to `dev`. Use the Makefile to build with a specific version:
 
 ```sh
-make build VERSION=0.8.0
+make build VERSION=0.9.0
 ```
 
 ### `store status [name]`
 
 Shows the symlink status for one or all stores. For file-mode stores, each file is shown individually.
 
-````sh
+```sh
 $ store status
   nvim                 [linked]   ~/.config/nvim
   shells               .zshrc               [linked]   ~/.zshrc
@@ -367,6 +368,12 @@ $ store status
   shells               config.fish          [linked]   ~/.config/fish/config.fish
   shells               config.nu            [linked]   ~/.config/nushell/config.nu
   git                  [conflict] ~/.config/git
+```
+
+```sh
+$ store status nvim
+  nvim                 [linked]   ~/.config/nvim
+```
 
 ### `store secret set <name> [value]`
 
@@ -381,7 +388,7 @@ Enter secret value: ****
 # Provide value as argument
 $ store secret set api_key "your-secret-value"
 Enter passphrase: ****
-````
+```
 
 ### `store secret get <name>`
 
@@ -415,8 +422,6 @@ github_token
 ```
 
 All secret commands prompt for a passphrase or read it from the `STORE_PASSPHRASE` environment variable.
-
-### `store status [name]`
 
 ## Config Format
 
@@ -471,7 +476,7 @@ Using both `target` and `targets` on the same store entry is invalid.
 
 Files containing `{{ secret "name" }}` placeholders are automatically detected and rendered during store operations. No configuration changes are needed.
 
-Each entry maps a store name (a directory in your repo) to one or more target paths (where symlinks are created).
+Each entry maps a store name (a directory in your repo) to one or more target paths (where symlinks are created). The `ignore:` field can be used on both top-level store entries and individual targets in multi-target mode to exclude specific files from being symlinked.
 
 ### Entry Fields
 
@@ -482,6 +487,7 @@ Each entry maps a store name (a directory in your repo) to one or more target pa
 | `target`   | No       | Where symlinks are created. Without a target, the entry is saved but no symlinks are created. |
 | `files`    | No       | Explicit list of files to symlink individually.                                               |
 | `patterns` | No       | Glob patterns to match files. Supports `*`, `?`, `[...]`, and `**` for recursive matching.    |
+| `ignore`   | No       | List of glob patterns to exclude from symlinking.                                             |
 | `when`     | No       | Platform conditions for this store. See [Platform Conditionals](#platform-conditionals).      |
 | `hooks`    | No       | Pre/post shell commands to run around store operations. See [Hooks](#hooks).                  |
 
@@ -493,6 +499,7 @@ Each entry maps a store name (a directory in your repo) to one or more target pa
 | `targets[].target`   | Yes      | Where symlinks are created for this target entry.                            |
 | `targets[].files`    | No       | Explicit list of files to symlink individually for this target.              |
 | `targets[].patterns` | No       | Glob patterns to match files for this target.                                |
+| `targets[].ignore`   | No       | List of glob patterns to exclude from symlinking for this target.            |
 
 **Behavior:**
 
@@ -772,6 +779,47 @@ stores:
     when:
       hostname: work-laptop
 ```
+
+## Ignoring Files
+
+Exclude files and directories from being symlinked using the `ignore:` field. This is useful for nested stores, scratch files, or editor backups.
+
+### Global Defaults
+
+The following patterns are always excluded automatically. You don't need to manually ignore them:
+
+- `.store/`
+- `.git/`
+- `.gitignore`
+- `.DS_Store`
+
+### Config Syntax
+
+The `ignore:` field accepts a list of glob patterns. It can be used on both top-level store entries and individual targets in multi-target mode.
+
+```yaml
+stores:
+  nvim:
+    target: ~/.config/nvim
+    ignore:
+      - "*.bak"
+      - "scratch/"
+      - "**/*.test.lua"
+```
+
+### Auto-promotion
+
+When a store is in whole-directory mode (no `files` or `patterns` specified), it normally creates a single symlink for the entire directory. If the directory contains ignored content (either via global defaults like `.git/` or explicit `ignore:` patterns), the store is automatically promoted to file mode.
+
+In file mode, the target becomes a real directory, and `store` creates individual symlinks for every non-ignored file and directory inside the store. This ensures that ignored files never appear at the target location.
+
+### Nested Stores
+
+A common use case for ignore patterns is nested stores. If a store directory contains its own `.store/` directory for sub-stores, the inner `.store/` is automatically excluded by the global defaults. This allows you to organize complex configurations hierarchically without accidentally symlinking configuration metadata.
+
+### Pattern Syntax
+
+The `ignore:` field uses the same glob syntax as the `patterns:` field. It supports `*`, `**`, and `?` for flexible matching. See [Pattern Syntax](#pattern-syntax) for more details.
 
 ## Status Indicators
 

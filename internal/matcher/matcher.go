@@ -10,6 +10,23 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 )
 
+// GlobalIgnore contains patterns always excluded from matching.
+var GlobalIgnore = []string{".store", ".store/**", ".git", ".git/**", ".gitignore", ".DS_Store"}
+
+// isIgnored checks if a relative path matches any ignore pattern.
+func isIgnored(relPath string, ignorePatterns []string) bool {
+	for _, pattern := range ignorePatterns {
+		if matched, _ := doublestar.Match(pattern, relPath); matched {
+			return true
+		}
+		dirPattern := strings.TrimSuffix(pattern, "/") + "/**"
+		if matched, _ := doublestar.Match(dirPattern, relPath); matched {
+			return true
+		}
+	}
+	return false
+}
+
 // Match resolves explicit file paths and glob patterns against a store directory,
 // returning a deduplicated, sorted list of relative paths.
 //
@@ -17,8 +34,9 @@ import (
 //   - Explicit files are validated with os.Lstat (no directory walk).
 //   - Simple patterns (no "**") use doublestar.Glob (single-level scan).
 //   - Only patterns containing "**" trigger a full recursive walk via GlobWalk.
-func Match(storeDir string, files []string, patterns []string) ([]string, error) {
+func Match(storeDir string, files []string, patterns []string, ignore []string) ([]string, error) {
 	seen := make(map[string]struct{})
+	allIgnore := append(append([]string{}, GlobalIgnore...), ignore...)
 
 	// Resolve explicit files first — no walking required.
 	for _, f := range files {
@@ -38,6 +56,9 @@ func Match(storeDir string, files []string, patterns []string) ([]string, error)
 				return nil, fmt.Errorf("file %q not found in store directory", f)
 			}
 			return nil, fmt.Errorf("failed to stat %q: %w", f, err)
+		}
+		if isIgnored(clean, allIgnore) {
+			continue
 		}
 		seen[clean] = struct{}{}
 	}
@@ -61,6 +82,9 @@ func Match(storeDir string, files []string, patterns []string) ([]string, error)
 				if d.IsDir() {
 					return nil
 				}
+				if isIgnored(path, allIgnore) {
+					return nil
+				}
 				seen[path] = struct{}{}
 				return nil
 			})
@@ -82,6 +106,9 @@ func Match(storeDir string, files []string, patterns []string) ([]string, error)
 					continue
 				}
 				if !fi.IsDir() {
+					if isIgnored(m, allIgnore) {
+						continue
+					}
 					seen[m] = struct{}{}
 				}
 			}

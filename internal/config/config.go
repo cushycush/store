@@ -19,6 +19,7 @@ type TargetEntry struct {
 	Target   string   `yaml:"target,omitempty"`
 	Files    []string `yaml:"files,omitempty"`
 	Patterns []string `yaml:"patterns,omitempty"`
+	Ignore   []string `yaml:"ignore,omitempty"`
 }
 
 // HookEntry defines pre and post shell commands to run around store operations.
@@ -84,6 +85,7 @@ type StoreEntry struct {
 	Target   string        `yaml:"target,omitempty"`
 	Files    []string      `yaml:"files,omitempty"`
 	Patterns []string      `yaml:"patterns,omitempty"`
+	Ignore   []string      `yaml:"ignore,omitempty"`
 	Targets  []TargetEntry `yaml:"targets,omitempty"`
 	Hooks    *HookEntry    `yaml:"hooks,omitempty"`
 	When     *WhenClause   `yaml:"when,omitempty"`
@@ -118,6 +120,7 @@ func (e StoreEntry) ResolvedTargets() []TargetEntry {
 		Target:   e.Target,
 		Files:    e.Files,
 		Patterns: e.Patterns,
+		Ignore:   e.Ignore,
 	}}
 }
 
@@ -127,9 +130,9 @@ func (e StoreEntry) Validate() error {
 		return fmt.Errorf("cannot use both 'target' and 'targets' on the same store entry")
 	}
 	if len(e.Targets) > 0 {
-		// Files/Patterns at the top level are invalid with targets.
-		if len(e.Files) > 0 || len(e.Patterns) > 0 {
-			return fmt.Errorf("cannot use top-level 'files' or 'patterns' with 'targets'; place them inside each target entry")
+		// Files/Patterns/Ignore at the top level are invalid with targets.
+		if len(e.Files) > 0 || len(e.Patterns) > 0 || len(e.Ignore) > 0 {
+			return fmt.Errorf("cannot use top-level 'files', 'patterns', or 'ignore' with 'targets'; place them inside each target entry")
 		}
 		for i, t := range e.Targets {
 			if t.Target == "" {
@@ -153,10 +156,12 @@ func (e *StoreEntry) MigrateToMultiTarget() {
 			Target:   e.Target,
 			Files:    e.Files,
 			Patterns: e.Patterns,
+			Ignore:   e.Ignore,
 		})
 		e.Target = ""
 		e.Files = nil
 		e.Patterns = nil
+		e.Ignore = nil
 	}
 }
 
@@ -167,6 +172,7 @@ func (e *StoreEntry) MigrateToSingleTarget() {
 		e.Target = t.Target
 		e.Files = t.Files
 		e.Patterns = t.Patterns
+		e.Ignore = t.Ignore
 		e.Targets = nil
 	}
 }
