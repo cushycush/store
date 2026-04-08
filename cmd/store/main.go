@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/spf13/cobra"
 
 	"github.com/cush/store/internal/config"
@@ -18,6 +19,7 @@ import (
 var (
 	version      = "dev"
 	forceBackups bool
+	onlyStores   []string
 )
 
 func main() {
@@ -29,6 +31,7 @@ func main() {
 		RunE:    runStoreAll,
 	}
 	rootCmd.PersistentFlags().BoolVar(&forceBackups, "force", false, "create .bak backups without prompting")
+	rootCmd.Flags().StringArrayVar(&onlyStores, "only", nil, "only store specific entries by name (repeatable)")
 
 	initCmd := &cobra.Command{
 		Use:   "init",
@@ -358,6 +361,21 @@ func runStoreAll(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Filter to only requested stores if --only was provided.
+	if len(onlyStores) > 0 {
+		filtered := make(map[string]config.StoreEntry)
+
+		for _, name := range onlyStores {
+			if entry, exists := cfg.Stores[name]; exists {
+				filtered[name] = entry
+			} else {
+				fmt.Printf("  warning: store %q not found in config\n", name)
+			}
+		}
+
+		cfg.Stores = filtered
+	}
+
 	// Global pre hook.
 	if err := hooks.RunGlobal(root, "pre-store", "link"); err != nil {
 		return err
@@ -423,6 +441,21 @@ func runRemoveAll(cmd *cobra.Command, args []string) error {
 
 	if len(cfg.Stores) == 0 {
 		return fmt.Errorf("no stores defined in config")
+	}
+
+	// Filter to only requested stores if --only was provided
+	if len(onlyStores) > 0 {
+		filtered := make(map[string]config.StoreEntry)
+
+		for _, name := range onlyStores {
+			if entry, exists := cfg.Stores[name]; exists {
+				filtered[name] = entry
+			} else {
+				fmt.Printf("  warning: store %q not found in config\n", name)
+			}
+		}
+
+		cfg.Stores = filtered
 	}
 
 	// Global pre hook.
