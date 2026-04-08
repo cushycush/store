@@ -12,6 +12,7 @@ import (
 	"github.com/cushycush/store/internal/config"
 	"github.com/cushycush/store/internal/hooks"
 	"github.com/cushycush/store/internal/linker"
+	"github.com/cushycush/store/internal/platform"
 	"github.com/cushycush/store/internal/render"
 	"github.com/cushycush/store/internal/secrets"
 	storeops "github.com/cushycush/store/internal/store"
@@ -536,6 +537,24 @@ func runStoreAll(cmd *cobra.Command, args []string) error {
 		cfg.Stores = filtered
 	}
 
+	selectedStores := cfg.Stores
+	info := platform.Detect()
+	filteredStores := filterStoresByPlatform(selectedStores, info)
+	skippedNames := make([]string, 0)
+	for name := range selectedStores {
+		if _, ok := filteredStores[name]; !ok {
+			skippedNames = append(skippedNames, name)
+		}
+	}
+	sort.Strings(skippedNames)
+	for _, name := range skippedNames {
+		fmt.Printf("  skipping %s (platform mismatch)\n", name)
+	}
+	cfg.Stores = filteredStores
+	if len(selectedStores) > 0 && len(cfg.Stores) == 0 {
+		return nil
+	}
+
 	// Global pre hook.
 	if err := hooks.RunGlobal(root, "pre-store", "link"); err != nil {
 		return err
@@ -613,19 +632,26 @@ func runRemoveAll(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no stores defined in config")
 	}
 
+	originalStores := cfg.Stores
+
 	// Filter to only requested stores if --only was provided
 	if len(onlyStores) > 0 {
 		filtered := make(map[string]config.StoreEntry)
 
 		for _, name := range onlyStores {
-			if entry, exists := cfg.Stores[name]; exists {
+			if entry, exists := originalStores[name]; exists {
 				filtered[name] = entry
 			} else {
 				fmt.Printf("  warning: store %q not found in config\n", name)
 			}
 		}
 
-		cfg.Stores = filtered
+		originalStores = filtered
+	}
+
+	storesToRemove := filterStoresByPlatform(originalStores, platform.Detect())
+	if len(originalStores) > 0 && len(storesToRemove) == 0 {
+		return nil
 	}
 
 	// Global pre hook.
@@ -635,7 +661,7 @@ func runRemoveAll(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("Removing all stores:")
 	var errors []error
-	for name, entry := range cfg.Stores {
+	for name, entry := range storesToRemove {
 		if err := storeops.StoreRemove(root, name, entry); err != nil {
 			errors = append(errors, err)
 		} else {
@@ -690,6 +716,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Show all stores.
+	cfg.Stores = filterStoresByPlatform(cfg.Stores, platform.Detect())
+
 	if len(cfg.Stores) == 0 {
 		fmt.Println("No stores defined in config.")
 		return nil
@@ -773,6 +801,18 @@ func expandTargetPath(target string) (string, error) {
 		}
 	}
 	return expanded, nil
+}
+
+// filterStoresByPlatform returns only stores whose When clause matches the current platform.
+// Stores without a When clause are always included.
+func filterStoresByPlatform(stores map[string]config.StoreEntry, info platform.Info) map[string]config.StoreEntry {
+	filtered := make(map[string]config.StoreEntry)
+	for name, entry := range stores {
+		if entry.When == nil || entry.When.Matches(info) {
+			filtered[name] = entry
+		}
+	}
+	return filtered
 }
 
 func runTargetAdd(name, target string, files, patterns []string) error {
