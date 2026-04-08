@@ -8,7 +8,6 @@ import (
 
 	"github.com/cushycush/store/internal/config"
 	"github.com/cushycush/store/internal/linker"
-	"github.com/cushycush/store/internal/matcher"
 )
 
 // ConflictInfo describes a file or directory that conflicts with a store symlink.
@@ -27,7 +26,7 @@ func CollectTargetConflicts(root string, name string, te config.TargetEntry) ([]
 		return nil, fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 	}
 
-	if !te.HasFileMode() {
+	if !shouldUseFileMode(source, te) {
 		// Whole-directory mode: check the single directory symlink.
 		status, err := linker.Check(source, target)
 		if err != nil {
@@ -48,7 +47,7 @@ func CollectTargetConflicts(root string, name string, te config.TargetEntry) ([]
 	}
 
 	// File mode: check each matched file.
-	files, err := matcher.Match(source, te.Files, te.Patterns)
+	files, err := resolveTargetMatches(source, te)
 	if err != nil {
 		return nil, fmt.Errorf("store %q target %q: %w", name, te.Target, err)
 	}

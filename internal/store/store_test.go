@@ -186,6 +186,74 @@ func TestStoreTarget(t *testing.T) {
 			},
 		},
 		{
+			name: "whole directory mode auto promotes when global ignores are present",
+			setup: func(t *testing.T, root string) config.TargetEntry {
+				t.Helper()
+				createStore(t, root, "app", map[string]string{
+					"config.txt":         "data",
+					"nested/keep.txt":    "keep",
+					".store/config.yaml": "ignored",
+				})
+				return config.TargetEntry{Target: filepath.Join(root, "targets", "auto-promote")}
+			},
+			check: func(t *testing.T, root string, te config.TargetEntry) {
+				t.Helper()
+				assertSymlinkPointsTo(t, filepath.Join(te.Target, "config.txt"), filepath.Join(root, "app", "config.txt"))
+				assertSymlinkPointsTo(t, filepath.Join(te.Target, "nested", "keep.txt"), filepath.Join(root, "app", "nested", "keep.txt"))
+				assertMissing(t, filepath.Join(te.Target, ".store"))
+				if fi, err := os.Lstat(te.Target); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+					t.Fatalf("auto-promoted target root %q should not be a symlink", te.Target)
+				}
+			},
+		},
+		{
+			name: "explicit ignore auto promotes and excludes matching files",
+			setup: func(t *testing.T, root string) config.TargetEntry {
+				t.Helper()
+				createStore(t, root, "app", map[string]string{
+					"keep.txt":  "keep",
+					"notes.bak": "bak",
+				})
+				return config.TargetEntry{
+					Target: filepath.Join(root, "targets", "ignore"),
+					Ignore: []string{"*.bak"},
+				}
+			},
+			check: func(t *testing.T, root string, te config.TargetEntry) {
+				t.Helper()
+				assertSymlinkPointsTo(t, filepath.Join(te.Target, "keep.txt"), filepath.Join(root, "app", "keep.txt"))
+				assertMissing(t, filepath.Join(te.Target, "notes.bak"))
+				if fi, err := os.Lstat(te.Target); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+					t.Fatalf("ignored target root %q should not be a symlink", te.Target)
+				}
+			},
+		},
+		{
+			name: "file mode and ignore both apply",
+			setup: func(t *testing.T, root string) config.TargetEntry {
+				t.Helper()
+				createStore(t, root, "app", map[string]string{
+					"keep.txt":         "keep",
+					"skip.bak":         "skip",
+					"nested/app.conf":  "conf",
+					"ignore/skip.conf": "ignored",
+				})
+				return config.TargetEntry{
+					Target:   filepath.Join(root, "targets", "file-ignore"),
+					Files:    []string{"keep.txt", "skip.bak"},
+					Patterns: []string{"**/*.conf"},
+					Ignore:   []string{"*.bak", "ignore/"},
+				}
+			},
+			check: func(t *testing.T, root string, te config.TargetEntry) {
+				t.Helper()
+				assertSymlinkPointsTo(t, filepath.Join(te.Target, "keep.txt"), filepath.Join(root, "app", "keep.txt"))
+				assertSymlinkPointsTo(t, filepath.Join(te.Target, "nested", "app.conf"), filepath.Join(root, "app", "nested", "app.conf"))
+				assertMissing(t, filepath.Join(te.Target, "skip.bak"))
+				assertMissing(t, filepath.Join(te.Target, "ignore"))
+			},
+		},
+		{
 			name: "returns error when target expansion fails",
 			setup: func(t *testing.T, root string) config.TargetEntry {
 				t.Helper()
@@ -480,6 +548,26 @@ func TestStoreRemoveTarget(t *testing.T) {
 				assertFileContent(t, filepath.Join(te.Target, "conflict.txt"), "target")
 			},
 		},
+		{
+			name: "auto promoted targets remove linked files",
+			setup: func(t *testing.T, root string) config.TargetEntry {
+				t.Helper()
+				te := config.TargetEntry{Target: filepath.Join(root, "targets", "auto-remove")}
+				createStore(t, root, "app", map[string]string{
+					"keep.txt":           "keep",
+					".store/config.yaml": "ignored",
+				})
+				if err := StoreTarget(root, "app", te); err != nil {
+					t.Fatalf("StoreTarget() setup error: %v", err)
+				}
+				return te
+			},
+			check: func(t *testing.T, root string, te config.TargetEntry) {
+				t.Helper()
+				assertMissing(t, filepath.Join(te.Target, "keep.txt"))
+				assertMissing(t, te.Target)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -763,6 +851,33 @@ func TestGetStatus(t *testing.T) {
 			if info.Status != wantStatus {
 				t.Fatalf("status for %q = %v, want %v", file, info.Status, wantStatus)
 			}
+		}
+	})
+
+	t.Run("auto promoted whole directory returns per file statuses", func(t *testing.T) {
+		root := t.TempDir()
+		target := filepath.Join(root, "targets", "auto-status")
+		createStore(t, root, "app", map[string]string{
+			"keep.txt":           "keep",
+			".store/config.yaml": "ignored",
+		})
+
+		if err := StoreTarget(root, "app", config.TargetEntry{Target: target}); err != nil {
+			t.Fatalf("StoreTarget() setup error: %v", err)
+		}
+
+		results := GetStatus(root, "app", config.StoreEntry{Target: target})
+		if len(results) != 1 {
+			t.Fatalf("len(GetStatus()) = %d, want 1", len(results))
+		}
+		if results[0].Error != nil {
+			t.Fatalf("GetStatus() returned unexpected error: %v", results[0].Error)
+		}
+		if results[0].File != "keep.txt" {
+			t.Fatalf("file = %q, want keep.txt", results[0].File)
+		}
+		if results[0].Status != linker.StatusLinked {
+			t.Fatalf("status = %v, want %v", results[0].Status, linker.StatusLinked)
 		}
 	})
 
