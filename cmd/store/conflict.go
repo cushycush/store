@@ -5,17 +5,18 @@ import (
 
 	"github.com/cushycush/store/internal/config"
 	storeops "github.com/cushycush/store/internal/store"
+	"github.com/cushycush/store/internal/ui"
 )
 
 // printConflicts lists conflicts and what will happen to each file.
 func printConflicts(conflicts []storeops.ConflictInfo) {
-	fmt.Println("The following files conflict with store symlinks:")
+	fmt.Println(ui.Bold("The following files conflict with store symlinks:"))
 	for _, conflict := range conflicts {
 		kind := "file"
 		if conflict.IsDir {
 			kind = "directory"
 		}
-		fmt.Printf("  %s (%s -> will be moved to %s)\n", conflict.Target, kind, conflict.Source)
+		fmt.Printf("  %s (%s %s will be moved to %s)\n", ui.TargetPath(conflict.Target), kind, ui.Arrow(), ui.TargetPath(conflict.Source))
 	}
 }
 
@@ -28,9 +29,9 @@ func checkBackups(conflicts []storeops.ConflictInfo) error {
 		return nil
 	}
 
-	fmt.Println("The following files in the store will be backed up (.bak):")
+	fmt.Println(ui.Bold("The following files in the store will be backed up (.bak):"))
 	for _, backup := range backups {
-		fmt.Printf(" %s\n", backup)
+		fmt.Printf(" %s\n", ui.TargetPath(backup))
 	}
 	fmt.Println()
 

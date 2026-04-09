@@ -8,6 +8,7 @@ import (
 	"github.com/cushycush/store/internal/linker"
 	"github.com/cushycush/store/internal/platform"
 	storeops "github.com/cushycush/store/internal/store"
+	"github.com/cushycush/store/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -32,6 +33,8 @@ func runDiff(_ *cobra.Command, _ []string, diffOnly []string) error {
 
 type diffRow struct {
 	Name    string
+	File    string
+	Target  string
 	Display string
 	Label   string
 	Error   error
@@ -50,7 +53,7 @@ func buildDiffReport(results []storeops.StatusInfo) ([]diffRow, diffSummary) {
 	summary := diffSummary{}
 
 	for _, info := range results {
-		row := diffRow{Name: info.Name, Display: diffDisplay(info), Error: info.Error}
+		row := diffRow{Name: info.Name, File: info.File, Target: info.Target, Display: diffDisplay(info), Error: info.Error}
 
 		switch {
 		case info.Error != nil:
@@ -100,6 +103,7 @@ func diffDisplay(info storeops.StatusInfo) string {
 func printDiffReport(rows []diffRow) {
 	nameWidth := len("store")
 	displayWidth := len("path")
+	labelWidth := len("[conflict]")
 	for _, row := range rows {
 		if len(row.Name) > nameWidth {
 			nameWidth = len(row.Name)
@@ -110,23 +114,61 @@ func printDiffReport(rows []diffRow) {
 	}
 
 	for _, row := range rows {
+		name := ui.StoreName(fmt.Sprintf("%-*s", nameWidth, row.Name))
+		display := styledDiffDisplay(row, displayWidth)
+		label := diffLabel(row.Label, labelWidth)
 		if row.Error != nil {
-			fmt.Printf("  %-*s %-*s [%-8s] %v\n", nameWidth, row.Name, displayWidth, row.Display, row.Label, row.Error)
+			fmt.Printf("  %s %s %s %s\n", name, display, label, ui.BoldRed(row.Error.Error()))
 			continue
 		}
-		fmt.Printf("  %-*s %-*s [%-8s]\n", nameWidth, row.Name, displayWidth, row.Display, row.Label)
+		fmt.Printf("  %s %s %s\n", name, display, label)
 	}
 }
 
 func formatDiffSummary(summary diffSummary) string {
 	parts := []string{
-		fmt.Sprintf("%d ok", summary.OK),
-		fmt.Sprintf("%d to create", summary.Create),
-		pluralizeCount(summary.Conflict, "conflict", "conflicts"),
-		fmt.Sprintf("%d to replace", summary.Replace),
+		fmt.Sprintf("%s ok", ui.Bold(fmt.Sprintf("%d", summary.OK))),
+		fmt.Sprintf("%s to create", ui.Bold(fmt.Sprintf("%d", summary.Create))),
+		fmt.Sprintf("%s %s", ui.Bold(fmt.Sprintf("%d", summary.Conflict)), pluralWord(summary.Conflict, "conflict", "conflicts")),
+		fmt.Sprintf("%s to replace", ui.Bold(fmt.Sprintf("%d", summary.Replace))),
 	}
 	if summary.Error > 0 {
-		parts = append(parts, pluralizeCount(summary.Error, "error", "errors"))
+		parts = append(parts, fmt.Sprintf("%s %s", ui.Bold(fmt.Sprintf("%d", summary.Error)), pluralWord(summary.Error, "error", "errors")))
 	}
 	return fmt.Sprintf("Summary: %s", strings.Join(parts, ", "))
+}
+
+func styledDiffDisplay(row diffRow, width int) string {
+	if row.File == "" {
+		return ui.TargetPath(fmt.Sprintf("%-*s", width, row.Target))
+	}
+
+	display := fmt.Sprintf("%s %s %s", row.File, ui.Arrow(), ui.TargetPath(row.Target))
+	padding := width - len(row.Display)
+	if padding < 0 {
+		padding = 0
+	}
+	return display + strings.Repeat(" ", padding)
+}
+
+func diffLabel(label string, width int) string {
+	switch label {
+	case "ok":
+		return ui.DiffOK() + strings.Repeat(" ", width-len("[ok]"))
+	case "create":
+		return ui.DiffCreate() + strings.Repeat(" ", width-len("[create]"))
+	case "conflict":
+		return ui.DiffConflict() + strings.Repeat(" ", width-len("[conflict]"))
+	case "replace":
+		return ui.DiffReplace() + strings.Repeat(" ", width-len("[replace]"))
+	default:
+		return ui.DiffError() + strings.Repeat(" ", width-len("[error]"))
+	}
+}
+
+func pluralWord(n int, singular, plural string) string {
+	if n == 1 {
+		return singular
+	}
+	return plural
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/cushycush/store/internal/config"
 	"github.com/cushycush/store/internal/importer"
+	"github.com/cushycush/store/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +30,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("Initialized store config at %s\n", config.ConfigPath(cwd))
+	fmt.Printf("%s %s\n", ui.Green("Initialized store config at"), ui.TargetPath(config.ConfigPath(cwd)))
 	return nil
 }
 
@@ -43,7 +44,7 @@ func runImport(scanDirs []string, dryRun bool) error {
 		scanDirs = defaultImportScanDirs()
 	}
 
-	fmt.Printf("Scanning for symlinks pointing into %s...\n\n", root)
+	fmt.Printf("%s %s...\n\n", ui.Bold("Scanning for symlinks pointing into"), ui.TargetPath(root))
 
 	links, err := importer.Scan(root, scanDirs)
 	if err != nil {
@@ -51,7 +52,7 @@ func runImport(scanDirs []string, dryRun bool) error {
 	}
 	links = filterImportLinks(links, cfg.Stores)
 	if len(links) == 0 {
-		fmt.Println("No new symlinks found")
+		fmt.Println(ui.Dim("No new symlinks found"))
 		return nil
 	}
 
@@ -59,7 +60,7 @@ func runImport(scanDirs []string, dryRun bool) error {
 	entries := importer.ToConfig(links, root)
 
 	if dryRun {
-		fmt.Printf("\nDry run: would import %s as %s\n", pluralizeCount(len(links), "symlink", "symlinks"), pluralizeCount(len(entries), "store", "stores"))
+		fmt.Printf("\nDry run: would import %s as %s\n", styledCount(len(links), "symlink", "symlinks"), styledCount(len(entries), "store", "stores"))
 		return nil
 	}
 
@@ -86,7 +87,7 @@ func runImport(scanDirs []string, dryRun bool) error {
 		configPath = config.ConfigPath(root)
 	}
 
-	fmt.Printf("Imported %s to %s\n", pluralizeCount(len(entries), "store", "stores"), configPath)
+	fmt.Printf("%s %s to %s\n", ui.Green("Imported"), styledCount(len(entries), "store", "stores"), ui.TargetPath(configPath))
 	return nil
 }
 
@@ -106,17 +107,22 @@ func filterImportLinks(links []importer.DiscoveredLink, existing map[string]conf
 }
 
 func printImportLinks(root string, links []importer.DiscoveredLink) {
-	fmt.Println("Found:")
+	fmt.Println(ui.Bold("Found:"))
 
 	nameWidth := len("store")
-	mappingWidth := 0
+	targetWidth := 0
+	sourceWidth := 0
 	for _, link := range links {
 		if len(link.StoreName) > nameWidth {
 			nameWidth = len(link.StoreName)
 		}
-		mapping := fmt.Sprintf("%s -> %s", formatImportPath(link.Target), importSourceDisplay(root, link))
-		if len(mapping) > mappingWidth {
-			mappingWidth = len(mapping)
+		target := formatImportPath(link.Target)
+		source := importSourceDisplay(root, link)
+		if len(target) > targetWidth {
+			targetWidth = len(target)
+		}
+		if len(source) > sourceWidth {
+			sourceWidth = len(source)
 		}
 	}
 
@@ -126,8 +132,9 @@ func printImportLinks(root string, links []importer.DiscoveredLink) {
 			kind = "whole directory"
 		}
 
-		mapping := fmt.Sprintf("%s -> %s", formatImportPath(link.Target), importSourceDisplay(root, link))
-		fmt.Printf("  %-*s %-*s (%s)\n", nameWidth, link.StoreName, mappingWidth, mapping, kind)
+		target := formatImportPath(link.Target)
+		source := importSourceDisplay(root, link)
+		fmt.Printf("  %s %s %s %s %s\n", ui.StoreName(fmt.Sprintf("%-*s", nameWidth, link.StoreName)), ui.TargetPath(fmt.Sprintf("%-*s", targetWidth, target)), ui.Arrow(), fmt.Sprintf("%-*s", sourceWidth, source), ui.Dim(fmt.Sprintf("(%s)", kind)))
 	}
 }
 
