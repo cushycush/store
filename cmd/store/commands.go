@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/cushycush/store/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -186,7 +187,7 @@ func newVersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print the version",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("store version %s\n", version)
+			fmt.Printf("%s version %s\n", ui.Bold("store"), ui.Bold(version))
 		},
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/cushycush/store/internal/platform"
 	"github.com/cushycush/store/internal/render"
 	"github.com/cushycush/store/internal/secrets"
+	"github.com/cushycush/store/internal/ui"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -41,7 +43,7 @@ func getPassphrase() (string, error) {
 }
 
 func promptHiddenValue(prompt, failureMessage string) (string, error) {
-	fmt.Print(prompt)
+	fmt.Print(ui.Bold(prompt))
 	value, err := term.ReadPassword(int(syscall.Stdin))
 	fmt.Println()
 	if err != nil {
@@ -149,7 +151,7 @@ func selectStores(stores map[string]config.StoreEntry, names []string) map[strin
 	for _, name := range names {
 		entry, exists := stores[name]
 		if !exists {
-			fmt.Printf("  warning: store %q not found in config\n", name)
+			fmt.Println(ui.Dim(fmt.Sprintf("  warning: store %q not found in config", name)))
 			continue
 		}
 		filtered[name] = entry
@@ -168,16 +170,16 @@ func printPlatformSkippedStores(selectedStores, filteredStores map[string]config
 
 	sort.Strings(skippedNames)
 	for _, name := range skippedNames {
-		fmt.Printf("  skipping %s (platform mismatch)\n", name)
+		fmt.Println(ui.Dim(fmt.Sprintf("  skipping %s (platform mismatch)", name)))
 	}
 }
 
 func printStoredTarget(name, target string, hasFileMode bool) {
 	if hasFileMode {
-		fmt.Printf("  %s -> %s (files)\n", name, target)
+		fmt.Printf("  %s %s %s %s\n", ui.StoreName(name), ui.Arrow(), ui.TargetPath(target), ui.Dim("(files)"))
 		return
 	}
-	fmt.Printf("  %s -> %s\n", name, target)
+	fmt.Printf("  %s %s %s\n", ui.StoreName(name), ui.Arrow(), ui.TargetPath(target))
 }
 
 func pluralizeCount(n int, singular, plural string) string {
@@ -187,9 +189,17 @@ func pluralizeCount(n int, singular, plural string) string {
 	return fmt.Sprintf("%d %s", n, plural)
 }
 
+func styledCount(n int, singular, plural string) string {
+	label := plural
+	if n == 1 {
+		label = singular
+	}
+	return ui.Bold(strconv.Itoa(n)) + " " + label
+}
+
 // promptYesNo prints a prompt and reads a y/N response from stdin. Default is no.
 func promptYesNo(prompt string) bool {
-	fmt.Printf("%s [y/N] ", prompt)
+	fmt.Printf("%s %s ", ui.Bold(prompt), ui.Dim("[y/N]"))
 	reader := bufio.NewReader(os.Stdin)
 	answer, _ := reader.ReadString('\n')
 	answer = strings.TrimSpace(strings.ToLower(answer))

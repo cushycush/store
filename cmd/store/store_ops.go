@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cushycush/store/internal/config"
 	"github.com/cushycush/store/internal/hooks"
 	"github.com/cushycush/store/internal/linker"
 	"github.com/cushycush/store/internal/platform"
 	storeops "github.com/cushycush/store/internal/store"
+	"github.com/cushycush/store/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +32,7 @@ func runAdd(name, target string, files, patterns []string) error {
 		if err := os.MkdirAll(storePath, 0o755); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", storePath, err)
 		}
-		fmt.Printf("Created directory %s\n", storePath)
+		fmt.Printf("%s %s\n", ui.Green("Created directory"), ui.TargetPath(storePath))
 	case err != nil:
 		return fmt.Errorf("failed to stat %s: %w", storePath, err)
 	case !info.IsDir():
@@ -51,7 +53,7 @@ func runAdd(name, target string, files, patterns []string) error {
 	}
 
 	if target == "" {
-		fmt.Printf("Added %s to config (no target set)\n", name)
+		fmt.Printf("%s %s %s\n", ui.Green("Added"), ui.StoreName(name), ui.Dim("to config (no target set)"))
 		return nil
 	}
 
@@ -82,7 +84,7 @@ func runModify(cmd *cobra.Command, name, target string, files, patterns []string
 	}
 
 	if err := storeops.StoreRemove(root, name, entry); err != nil {
-		fmt.Printf("  warning: failed to remove old symlinks: %s\n", err)
+		fmt.Println(ui.Dim(fmt.Sprintf("  warning: failed to remove old symlinks: %s", err)))
 	}
 
 	if cmd.Flags().Changed("target") {
@@ -113,7 +115,7 @@ func runModify(cmd *cobra.Command, name, target string, files, patterns []string
 	}
 
 	if entry.Target == "" {
-		fmt.Printf("Modified %s (no target set)\n", name)
+		fmt.Printf("%s %s %s\n", ui.Green("Modified"), ui.StoreName(name), ui.Dim("(no target set)"))
 		return nil
 	}
 
@@ -161,11 +163,11 @@ func runStoreAll(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Println("Storing all stores:")
+	fmt.Println(ui.Bold("Storing all stores:"))
 	err = storeAllWithConflictResolution(root, cfg, secretMap)
 
 	if err := hooks.RunGlobal(root, "post-store", "link"); err != nil {
-		fmt.Printf("  warning: %s\n", err)
+		fmt.Println(ui.Dim(fmt.Sprintf("  warning: %s", err)))
 	}
 
 	return err
@@ -196,11 +198,11 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 	targets := entry.ResolvedTargets()
 	if len(targets) == 1 {
-		fmt.Printf("Removed store %s (%s)\n", name, targets[0].Target)
+		fmt.Printf("%s store %s (%s)\n", ui.Green("Removed"), ui.StoreName(name), ui.TargetPath(targets[0].Target))
 		return nil
 	}
 
-	fmt.Printf("Removed store %s (%d targets)\n", name, len(targets))
+	fmt.Printf("%s store %s (%s targets)\n", ui.Green("Removed"), ui.StoreName(name), ui.Bold(fmt.Sprintf("%d", len(targets))))
 	return nil
 }
 
@@ -226,7 +228,7 @@ func runRemoveAll(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Println("Removing all stores:")
+	fmt.Println(ui.Bold("Removing all stores:"))
 	var errors []error
 	for name, entry := range storesToRemove {
 		if err := storeops.StoreRemove(root, name, entry); err != nil {
@@ -235,7 +237,7 @@ func runRemoveAll(cmd *cobra.Command, args []string) error {
 		}
 
 		delete(cfg.Stores, name)
-		fmt.Printf("  removed %s (%s)\n", name, entry.Target)
+		fmt.Printf("  %s %s (%s)\n", ui.Green("Removed"), ui.StoreName(name), ui.TargetPath(entry.Target))
 	}
 
 	if err := config.Save(root, cfg); err != nil {
@@ -245,13 +247,13 @@ func runRemoveAll(cmd *cobra.Command, args []string) error {
 	if len(errors) > 0 {
 		fmt.Println()
 		for _, err := range errors {
-			fmt.Printf("  error: %s\n", err)
+			fmt.Println(ui.BoldRed(fmt.Sprintf("  error: %s", err)))
 		}
 		return fmt.Errorf("%d store(s) failed", len(errors))
 	}
 
 	if err := hooks.RunGlobal(root, "post-remove", "unlink"); err != nil {
-		fmt.Printf("  warning: %s\n", err)
+		fmt.Println(ui.Dim(fmt.Sprintf("  warning: %s", err)))
 	}
 
 	return nil
@@ -280,7 +282,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	cfg.Stores = filterStoresByPlatform(cfg.Stores, platform.Detect())
 	if len(cfg.Stores) == 0 {
-		fmt.Println("No stores defined in config.")
+		fmt.Println(ui.Dim("No stores defined in config."))
 		return nil
 	}
 
@@ -376,7 +378,7 @@ func runTargetRemove(name, target string) error {
 	}
 
 	if err := storeops.StoreRemoveTarget(root, name, entry.Targets[found]); err != nil {
-		fmt.Printf("  warning: failed to remove symlinks: %s\n", err)
+		fmt.Println(ui.Dim(fmt.Sprintf("  warning: failed to remove symlinks: %s", err)))
 	}
 
 	entry.Targets = append(entry.Targets[:found], entry.Targets[found+1:]...)
@@ -394,7 +396,7 @@ func runTargetRemove(name, target string) error {
 		return err
 	}
 
-	fmt.Printf("  removed target %s from %s\n", target, name)
+	fmt.Printf("  %s target %s from %s\n", ui.Green("Removed"), ui.TargetPath(target), ui.StoreName(name))
 	return nil
 }
 
@@ -432,7 +434,7 @@ func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []
 	}
 
 	if err := storeops.StoreRemoveTarget(root, name, entry.Targets[found]); err != nil {
-		fmt.Printf("  warning: failed to remove old symlinks: %s\n", err)
+		fmt.Println(ui.Dim(fmt.Sprintf("  warning: failed to remove old symlinks: %s", err)))
 	}
 
 	targetEntry := &entry.Targets[found]
@@ -478,31 +480,31 @@ func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []
 func printStatus(info storeops.StatusInfo) {
 	if info.Error != nil {
 		if info.File != "" {
-			fmt.Printf("  %-20s %-20s %s  (error: %s)\n", info.Name, info.File, info.Target, info.Error)
+			fmt.Printf("  %s %s %s  %s\n", ui.StoreName(fmt.Sprintf("%-20s", info.Name)), ui.FileName(fmt.Sprintf("%-20s", info.File)), ui.TargetPath(info.Target), ui.BoldRed(fmt.Sprintf("(error: %s)", info.Error)))
 			return
 		}
-		fmt.Printf("  %-20s %s  (error: %s)\n", info.Name, info.Target, info.Error)
+		fmt.Printf("  %s %s  %s\n", ui.StoreName(fmt.Sprintf("%-20s", info.Name)), ui.TargetPath(info.Target), ui.BoldRed(fmt.Sprintf("(error: %s)", info.Error)))
 		return
 	}
 
 	indicator := statusIndicator(info.Status)
 	if info.File != "" {
-		fmt.Printf("  %-20s %-20s %-10s %s\n", info.Name, info.File, indicator, info.Target)
+		fmt.Printf("  %s %s %s %s\n", ui.StoreName(fmt.Sprintf("%-20s", info.Name)), ui.FileName(fmt.Sprintf("%-20s", info.File)), indicator, ui.TargetPath(info.Target))
 		return
 	}
-	fmt.Printf("  %-20s %-10s %s\n", info.Name, indicator, info.Target)
+	fmt.Printf("  %s %s %s\n", ui.StoreName(fmt.Sprintf("%-20s", info.Name)), indicator, ui.TargetPath(info.Target))
 }
 
 func statusIndicator(status linker.Status) string {
 	switch status {
 	case linker.StatusLinked:
-		return "[linked]"
+		return ui.StatusLinked() + strings.Repeat(" ", 10-len("[linked]"))
 	case linker.StatusMissing:
-		return "[missing]"
+		return ui.StatusMissing() + strings.Repeat(" ", 10-len("[missing]"))
 	case linker.StatusConflict:
-		return "[conflict]"
+		return ui.StatusConflict() + strings.Repeat(" ", 10-len("[conflict]"))
 	case linker.StatusBroken:
-		return "[broken]"
+		return ui.StatusBroken() + strings.Repeat(" ", 10-len("[broken]"))
 	default:
 		return ""
 	}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/cushycush/store/internal/config"
 	"github.com/cushycush/store/internal/secrets"
+	"github.com/cushycush/store/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -42,7 +43,7 @@ func runSecretSet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("Set secret %s\n", args[0])
+	fmt.Printf("%s %s\n", ui.Green("Set secret"), ui.Bold(args[0]))
 	return nil
 }
 
@@ -69,7 +70,7 @@ func runSecretGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("secret %q not found", args[0])
 	}
 
-	fmt.Println(value)
+	fmt.Println(ui.FileName(value))
 	return nil
 }
 
@@ -100,7 +101,7 @@ func runSecretRemove(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("Removed secret %s\n", args[0])
+	fmt.Printf("%s %s\n", ui.Green("Removed secret"), ui.Bold(args[0]))
 	return nil
 }
 
@@ -130,7 +131,7 @@ func runSecretList(cmd *cobra.Command, args []string) error {
 	sort.Strings(names)
 
 	for _, name := range names {
-		fmt.Println(name)
+		fmt.Println(ui.Bold(name))
 	}
 
 	return nil

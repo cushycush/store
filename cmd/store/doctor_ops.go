@@ -7,6 +7,7 @@ import (
 	"github.com/cushycush/store/internal/doctor"
 	"github.com/cushycush/store/internal/linker"
 	storeops "github.com/cushycush/store/internal/store"
+	"github.com/cushycush/store/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -29,11 +30,11 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	errorCount, warningCount, infoCount := countDoctorIssues(issues)
 
-	fmt.Println("Checking store health...")
+	fmt.Println(ui.Bold("Checking store health..."))
 	fmt.Println()
-	fmt.Printf("  [ok] %d stores configured\n", len(cfg.Stores))
+	fmt.Printf("  %s %s stores configured\n", ui.DoctorOK(), ui.Bold(fmt.Sprintf("%d", len(cfg.Stores))))
 	if brokenSymlinks == 0 {
-		fmt.Println("  [ok] all symlinks healthy")
+		fmt.Printf("  %s all symlinks healthy\n", ui.DoctorOK())
 	}
 
 	if len(issues) > 0 {
@@ -69,29 +70,29 @@ func countDoctorIssues(issues []doctor.Issue) (errors int, warnings int, infos i
 func doctorIndicator(level string) string {
 	switch level {
 	case "error":
-		return "[error]"
+		return ui.DoctorError()
 	case "warning":
-		return "[warn]"
+		return ui.DoctorWarn()
 	default:
-		return "[info]"
+		return ui.DoctorInfo()
 	}
 }
 
 func formatDoctorSummary(total, errors, warnings, infos int) string {
 	if total == 0 {
-		return "0 issues found"
+		return fmt.Sprintf("%s issues found", ui.Bold("0"))
 	}
 
 	parts := make([]string, 0, 3)
 	if errors > 0 {
-		parts = append(parts, pluralizeCount(errors, "error", "errors"))
+		parts = append(parts, styledCount(errors, "error", "errors"))
 	}
 	if warnings > 0 {
-		parts = append(parts, pluralizeCount(warnings, "warning", "warnings"))
+		parts = append(parts, styledCount(warnings, "warning", "warnings"))
 	}
 	if infos > 0 {
-		parts = append(parts, pluralizeCount(infos, "info", "infos"))
+		parts = append(parts, styledCount(infos, "info", "infos"))
 	}
 
-	return fmt.Sprintf("%s found (%s)", pluralizeCount(total, "issue", "issues"), strings.Join(parts, ", "))
+	return fmt.Sprintf("%s found (%s)", styledCount(total, "issue", "issues"), strings.Join(parts, ", "))
 }
