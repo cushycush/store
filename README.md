@@ -85,7 +85,7 @@ $ go install github.com/cush/store/cmd/store@latest
 ```sh
 $ git clone https://github.com/cush/store.git
 $ cd store
-$ make build VERSION=1.0.0
+$ make build VERSION=1.1.0
 $ mv store /usr/local/bin/
 ```
 
@@ -145,10 +145,10 @@ Run `store --help` for the full CLI tree. The command reference below documents 
 
 Applies all configured stores. This is the default command you run after cloning a dotfiles repo on a new machine.
 
-| Flag | Description |
-| --- | --- |
-| `--only` | Apply only the named stores (repeatable) |
-| `--force` | Create `.bak` backups without prompting |
+| Flag      | Description                              |
+| --------- | ---------------------------------------- |
+| `--only`  | Apply only the named stores (repeatable) |
+| `--force` | Create `.bak` backups without prompting  |
 
 ```sh
 $ store --only nvim --only git
@@ -189,10 +189,10 @@ Use this once at the root of a new dotfiles repo.
 
 Scans for existing symlinks that already point into the repo and imports them into `.store/config.yaml`.
 
-| Flag | Description |
-| --- | --- |
+| Flag         | Description                                                                                      |
+| ------------ | ------------------------------------------------------------------------------------------------ |
 | `--scan-dir` | Directories to scan (repeatable). Defaults to `~`, `~/.config`, `~/.local/share`, `~/.local/bin` |
-| `--dry-run` | Print what would be imported without writing config |
+| `--dry-run`  | Print what would be imported without writing config                                              |
 
 ```sh
 $ store import --dry-run
@@ -392,8 +392,8 @@ How it works:
 
 Previews what `store` would do without changing anything.
 
-| Flag | Description |
-| --- | --- |
+| Flag     | Description                                |
+| -------- | ------------------------------------------ |
 | `--only` | Preview only the named stores (repeatable) |
 
 ```sh
@@ -462,7 +462,7 @@ $ store --version
 ```
 
 ```text
-store version 1.0.0
+store version 1.1.0
 ```
 
 If built without an injected version, the binary reports `dev`.
