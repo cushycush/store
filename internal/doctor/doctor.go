@@ -37,8 +37,43 @@ func Check(root string) []Issue {
 	issues = append(issues, checkMissingSecrets(root, cfg)...)
 	issues = append(issues, checkEmptyStores(root, cfg)...)
 	issues = append(issues, checkPlatformSkippedStores(cfg, platformInfo)...)
+	issues = append(issues, checkSymlinkCapability(root, platformInfo)...)
 
 	return issues
+}
+
+// checkSymlinkCapability verifies that the current process can create
+// symlinks. On Windows this requires Developer Mode or the
+// SeCreateSymbolicLinkPrivilege; without one of those, os.Symlink returns a
+// permission error at apply time. We probe once so the user sees a clear
+// warning from `store doctor` instead of a cryptic failure later.
+func checkSymlinkCapability(root string, info platform.Info) []Issue {
+	if info.OS != "windows" {
+		return nil
+	}
+
+	dir := filepath.Join(root, ".store")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil
+	}
+
+	target, err := os.CreateTemp(dir, "store-symlink-probe-*")
+	if err != nil {
+		return nil
+	}
+	targetPath := target.Name()
+	_ = target.Close()
+	defer os.Remove(targetPath)
+
+	linkPath := targetPath + ".link"
+	if err := os.Symlink(targetPath, linkPath); err != nil {
+		return []Issue{{
+			Level:   "warning",
+			Message: "cannot create symlinks on this system — enable Windows Developer Mode or run as Administrator",
+		}}
+	}
+	_ = os.Remove(linkPath)
+	return nil
 }
 
 func checkOrphanedConfigEntries(root string, cfg *config.Config) []Issue {

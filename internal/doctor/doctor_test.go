@@ -8,7 +8,38 @@ import (
 
 	"github.com/cushycush/store/internal/config"
 	"github.com/cushycush/store/internal/linker"
+	"github.com/cushycush/store/internal/platform"
 )
+
+func TestCheckSymlinkCapabilityNonWindows(t *testing.T) {
+	root := t.TempDir()
+	// Non-windows info: should be a no-op regardless of actual host.
+	info := platform.Info{OS: "linux"}
+	if issues := checkSymlinkCapability(root, info); len(issues) != 0 {
+		t.Fatalf("expected no issues on non-windows, got %#v", issues)
+	}
+}
+
+func TestCheckSymlinkCapabilityWindows(t *testing.T) {
+	// We can only verify the success path on a host that supports symlinks,
+	// which covers Linux and macOS CI runners. On Windows without Developer
+	// Mode the probe exercises the warning path — either outcome is valid.
+	root := t.TempDir()
+	info := platform.Info{OS: "windows"}
+	issues := checkSymlinkCapability(root, info)
+
+	switch runtime.GOOS {
+	case "linux", "darwin":
+		if len(issues) != 0 {
+			t.Fatalf("expected symlink probe to succeed on %s, got %#v", runtime.GOOS, issues)
+		}
+	}
+	for _, issue := range issues {
+		if issue.Level != "warning" {
+			t.Fatalf("unexpected issue level %q", issue.Level)
+		}
+	}
+}
 
 func TestCheckOrphanedConfigEntry(t *testing.T) {
 	root := t.TempDir()
