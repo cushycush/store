@@ -82,7 +82,7 @@ $ go install github.com/cush/store/cmd/store@latest
 ### Build from source
 
 ```sh
-$ git clone https://github.com/cush/store.git
+$ git clone https://github.com/cushycush/store.git
 $ cd store
 $ make build VERSION=1.2.2
 $ mv store /usr/local/bin/
