@@ -1,6 +1,6 @@
 ![store logo](https://res.cloudinary.com/cush/image/upload/v1775189496/screenshot-2026-04-02_22-10-09_y9sbug.png)
 
-`store` manages dotfile symlinks from a single repository without requiring a mirrored target directory layout.
+`store` is a dotfile manager for Linux, macOS, and Windows. You keep your config files in one git repo; `store` reads a single YAML file and creates the symlinks that place each file where the relevant program expects to find it — `~/.zshrc`, `~/.config/nvim`, and so on. Unlike GNU Stow, your repo directory structure does not have to mirror your home directory — target paths are declared explicitly. One repo, one config file, one command per machine.
 
 ## Table of Contents
 
@@ -8,15 +8,16 @@
 - [How It Differs from GNU Stow](#how-it-differs-from-gnu-stow)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
-- [Commands](#commands)
+- [Concepts](#concepts)
 - [Config Format](#config-format)
 - [Hooks](#hooks)
 - [Secrets](#secrets)
 - [Platform Conditionals](#platform-conditionals)
 - [Ignoring Files](#ignoring-files)
+- [How It Works](#how-it-works)
+- [Commands](#commands)
 - [Shell Completion](#shell-completion)
 - [Status Indicators](#status-indicators)
-- [How It Works](#how-it-works)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
@@ -50,8 +51,6 @@ Example result after running `store`:
 ~/.config/nushell/config.nu   -> ~/dotfiles/shells/config.nu
 ~/.config/git                 -> ~/dotfiles/git
 ```
-
-`store` supports whole-directory links, file-level links, multiple targets per store, encrypted template rendering for secrets, hooks, platform filters, ignore patterns, diff previews, health checks, and importing an existing symlink layout back into config.
 
 ## How It Differs from GNU Stow
 
@@ -137,9 +136,294 @@ $ store
 
 If target files already exist, `store` detects the conflict, offers to move those files into the repo, and then creates the symlinks.
 
+## Concepts
+
+Six ideas to keep in mind before you read the command reference. The rest of the README — Config Format, Hooks, Secrets, Commands — assumes these.
+
+- **Store.** A top-level directory in your repo (`nvim/`, `shells/`, `git/`). Each store is independently configured in `.store/config.yaml` and can be linked or removed on its own.
+
+- **Target.** The path on disk where a store (or selected files from it) gets symlinked: `~/.config/nvim`, `~/.zshrc`, and so on. Targets are declared explicitly — `store` never guesses based on directory names.
+
+- **Whole-directory mode vs file mode.** A store either links its directory as a single symlink or links selected files into a target directory.
+
+  - No `files` and no `patterns` → whole-directory mode. Example: `nvim/` is linked as `~/.config/nvim`.
+  - Any `files` or `patterns` → file mode. Example: `.zshrc` and `.bashrc` from `shells/` land individually inside `~` alongside non-dotfile content.
+  - `files` and `patterns` can be used together; matches are combined and deduplicated.
+  - `ignore` applies in both modes.
+  - If whole-directory mode would include ignored content, `store` automatically promotes that target to file mode so ignored files never appear at the target.
+
+- **Single-target vs multi-target.** Use `target:` when a store goes to one place. Use `targets:` when one store's files fan out to several locations — for example, `shells` with `.zshrc` landing in `~`, `config.fish` in `~/.config/fish`, and `config.nu` in `~/.config/nushell`. You can switch between the two forms at any time; `store target add` and `store target remove` migrate automatically.
+
+- **The config is the source of truth.** `.store/config.yaml` fully describes the symlink state you want on a machine. Running `store` reconciles the filesystem to match — it creates missing links, replaces broken ones, and leaves correct ones alone. Changing the config and running `store` again is the entire update loop.
+
+- **Conflict handling.** If a target path already exists as a real file or directory (not a `store`-managed symlink), `store` stops before linking and offers to move the existing content into the repo and then symlink back. Nothing gets overwritten silently.
+
+## Config Format
+
+Configuration lives in `.store/config.yaml`.
+
+Single-target format:
+
+```yaml
+stores:
+  nvim:
+    target: "~/.config/nvim"
+  shells:
+    target: "~"
+    files:
+      - .zshrc
+      - .bashrc
+    ignore:
+      - "*.bak"
+    hooks:
+      post: "printf 'shells linked\n'"
+    when:
+      os: linux
+```
+
+Multi-target format:
+
+```yaml
+stores:
+  shells:
+    targets:
+      - target: "~"
+        files:
+          - .zshrc
+          - .bashrc
+      - target: "~/.config/fish"
+        files:
+          - config.fish
+      - target: "~/.config/nushell"
+        patterns:
+          - "*.nu"
+        ignore:
+          - "*.bak"
+```
+
+Rules:
+
+- A store may use either `target` or `targets`, not both.
+- In multi-target mode, `files`, `patterns`, and `ignore` belong inside each `targets[]` entry.
+- If a store entry has no target yet, it is valid config but nothing is linked.
+
+### Top-level store fields
+
+| Field      | Required | Description                                      |
+| ---------- | -------- | ------------------------------------------------ |
+| `target`   | No       | Target path for a single-target store            |
+| `files`    | No       | Explicit list of files to link individually      |
+| `patterns` | No       | Glob patterns to match files; supports `**`      |
+| `ignore`   | No       | Glob patterns to exclude from linking            |
+| `hooks`    | No       | Per-store `pre` and `post` shell commands        |
+| `when`     | No       | Platform filter for this store                   |
+| `targets`  | No       | List of per-target entries for multi-target mode |
+
+### Nested `targets[]` fields
+
+| Field                | Required | Description                                         |
+| -------------------- | -------- | --------------------------------------------------- |
+| `targets[].target`   | Yes      | Target path for this target entry                   |
+| `targets[].files`    | No       | Explicit files to link individually for this target |
+| `targets[].patterns` | No       | Glob patterns to match files for this target        |
+| `targets[].ignore`   | No       | Glob patterns to exclude for this target            |
+
+### `hooks` fields
+
+| Field        | Required | Description                                          |
+| ------------ | -------- | ---------------------------------------------------- |
+| `hooks.pre`  | No       | Command run before link or unlink work for the store |
+| `hooks.post` | No       | Command run after link or unlink work for the store  |
+
+### `when` fields
+
+| Field                 | Required | Description                                                         |
+| --------------------- | -------- | ------------------------------------------------------------------- |
+| `when.os`             | No       | OS name such as `linux`, `darwin`, or `windows`                     |
+| `when.arch`           | No       | CPU architecture such as `amd64` or `arm64`                         |
+| `when.distro`         | No       | Distro or OS family such as `ubuntu`, `arch`, `macos`, or `windows` |
+| `when.distro_version` | No       | Distro version string                                               |
+| `when.hostname`       | No       | Hostname to match                                                   |
+| `when.shell`          | No       | Current shell name such as `zsh`, `bash`, `fish`, or `nu`           |
+| `when.wsl`            | No       | Whether the machine is running under WSL                            |
+
+### Pattern syntax
+
+| Pattern          | Matches                                          |
+| ---------------- | ------------------------------------------------ |
+| `.zsh*`          | `.zshrc`, `.zshenv`, and similar top-level files |
+| `*.conf`         | Top-level `.conf` files                          |
+| `**/*.conf`      | `.conf` files at any depth                       |
+| `config/*.lua`   | `.lua` files directly inside `config/`           |
+| `**/*.{lua,vim}` | `.lua` and `.vim` files recursively              |
+
+### Target path rules
+
+- `~` and `~/...` are supported on the CLI and in config.
+- In YAML, every `~` path must be quoted, for example `target: "~"` or `target: "~/.config/nvim"`.
+- Relative CLI target paths are resolved to absolute paths before being saved.
+
+## Hooks
+
+Hooks let you run shell commands around store operations. Use them for post-link reloads, cache rebuilds, or validation steps tied to a specific store or to the whole repo.
+
+Per-store hook example:
+
+```yaml
+stores:
+  tmux:
+    target: "~/.config/tmux"
+    hooks:
+      post: "tmux source-file ~/.config/tmux/tmux.conf 2>/dev/null || true"
+  nvim:
+    target: "~/.config/nvim"
+    hooks:
+      pre: "nvim --headless -c 'checkhealth' -c 'qa' 2>/dev/null"
+```
+
+Global hook layout:
+
+```text
+.store/hooks/
+  pre-store
+  post-store
+  pre-remove
+  post-remove
+```
+
+How it works:
+
+- Per-store hooks are configured in YAML and executed with `sh -c` on Linux and macOS, and with `cmd.exe /C` on Windows.
+- Global hooks live in `.store/hooks/`. On Linux and macOS they must have the executable bit set and are run directly via their shebang.
+- On Windows the executable bit is ignored; global hooks are dispatched by file extension: `.ps1` scripts run under PowerShell, `.cmd`/`.bat`/`.exe` run directly, and anything else is attempted via `sh` (works under Git Bash or WSL).
+
+Relevant details:
+
+- `pre` hooks abort that store on failure.
+- `post` hooks only warn on failure.
+- `pre-store` and `pre-remove` abort the whole command on failure.
+- Hooks receive `STORE_ROOT`, `STORE_ACTION`, and detected platform variables; per-store hooks also receive `STORE_NAME` and `STORE_TARGET`.
+
+## Secrets
+
+A secret is an encrypted value stored in `.store/secrets.enc` and rendered into a linked file at apply time using the `{{ secret "name" }}` template tag. Secrets let you keep encrypted values in the repo while rendering those values into linked files locally at apply time.
+
+Template example:
+
+```yaml
+stores:
+  git:
+    target: "~/.config/git"
+    files:
+      - .gitconfig
+```
+
+```text
+[github]
+    token = {{ secret "github_token" }}
+```
+
+Usage example:
+
+```sh
+$ store secret set github_token
+$ store
+```
+
+How it works:
+
+- Template placeholders use `{{ secret "name" }}`.
+- `store` scans the selected store directories and only prompts for a passphrase if rendering is needed.
+- Secrets are stored in `.store/secrets.enc`.
+- Rendered files are written into a local staging directory under `$XDG_STATE_HOME/store/<repo-hash>/` or `~/.local/state/store/<repo-hash>/` if `XDG_STATE_HOME` is unset.
+- Files without secret placeholders are symlinked directly; rendered files are symlinked from the staging directory.
+
+Relevant details:
+
+- Encryption uses Argon2id for key derivation and XChaCha20-Poly1305 for authenticated encryption.
+- If a referenced secret is missing, the render step fails and the store operation stops.
+- The passphrase comes from `STORE_PASSPHRASE` or hidden interactive input.
+- `.store/secrets.enc` is designed to be committed; the plaintext secrets are not.
+
+## Platform Conditionals
+
+Platform conditionals let one repo serve multiple machines without separate branches or manual edits.
+
+Example:
+
+```yaml
+stores:
+  linux-shell:
+    target: "~"
+    files:
+      - .bashrc
+    when:
+      os: linux
+
+  work-tools:
+    target: "~/work"
+    when:
+      hostname: work-laptop
+
+  wsl-tools:
+    target: "~/.local/bin"
+    when:
+      wsl: true
+```
+
+How it works:
+
+- `store` compares each populated `when:` field against detected platform info.
+- All specified fields must match.
+- Stores without `when:` always apply.
+
+Relevant details:
+
+- Detected values include OS, arch, distro, distro version, hostname, shell, and WSL state.
+- Commands that operate on the configured set, such as `store`, `store diff`, and `store status`, skip non-matching stores.
+- `store doctor` reports skipped stores as informational issues so you can confirm the filter is doing what you expect.
+
+## Ignoring Files
+
+Ignore patterns exclude files or directories from linking. This is useful for editor backups, nested metadata, scratch files, or partial stores that should not be exposed at the target.
+
+Example:
+
+```yaml
+stores:
+  nvim:
+    target: "~/.config/nvim"
+    ignore:
+      - "*.bak"
+      - "scratch/"
+      - "**/*.test.lua"
+```
+
+How it works:
+
+- Global ignore patterns are always active: `.store`, `.store/**`, `.git`, `.git/**`, `.gitignore`, `.DS_Store`.
+- User-defined `ignore:` patterns are added on top of the global ignore set.
+- Directory ignore patterns such as `scratch/` exclude the whole directory tree.
+
+Relevant details:
+
+- Ignore matching uses the same glob engine as `patterns:`.
+- If a target has `ignore:` or if the store contains globally ignored files, whole-directory mode is automatically promoted to file mode so ignored content never appears at the target.
+- `ignore:` may be defined at the top level for single-target stores or inside each `targets[]` entry for multi-target stores.
+
+## How It Works
+
+- **Root discovery:** commands can run from any subdirectory inside the repo; `store` walks upward until it finds `.store/`.
+- **Portable target storage:** CLI target paths keep `~` prefixes when possible so config stays portable across machines.
+- **Absolute symlinks:** link targets are resolved to absolute source paths so the working directory does not matter.
+- **Conflict resolution:** before linking, `store` detects files or directories already occupying the target and offers to move them into the repo. If files already exist in the store where moved content would land, `store` lists the `.bak` backups it would create.
+- **Whole-directory vs file mode:** no `files` or `patterns` means whole-directory mode unless ignored content forces promotion to file mode.
+- **Template staging:** secret-backed templates are rendered into a machine-local staging directory and linked from there.
+- **Performance:** explicit files use direct stat checks, non-recursive globs avoid full walks, and only `**` patterns trigger recursive traversal.
+
 ## Commands
 
-Run `store --help` for the full CLI tree. The command reference below documents every subcommand defined by the CLI.
+Reference for every subcommand. For a task-oriented tour, see [Quick Start](#quick-start) and [Concepts](#concepts). Run `store --help` for the live CLI tree.
 
 ### `store`
 
@@ -523,267 +807,6 @@ $ store completion fish
 
 Use it with the install instructions in [Shell Completion](#shell-completion).
 
-## Config Format
-
-Configuration lives in `.store/config.yaml`.
-
-Single-target format:
-
-```yaml
-stores:
-  nvim:
-    target: "~/.config/nvim"
-  shells:
-    target: "~"
-    files:
-      - .zshrc
-      - .bashrc
-    ignore:
-      - "*.bak"
-    hooks:
-      post: "printf 'shells linked\n'"
-    when:
-      os: linux
-```
-
-Multi-target format:
-
-```yaml
-stores:
-  shells:
-    targets:
-      - target: "~"
-        files:
-          - .zshrc
-          - .bashrc
-      - target: "~/.config/fish"
-        files:
-          - config.fish
-      - target: "~/.config/nushell"
-        patterns:
-          - "*.nu"
-        ignore:
-          - "*.bak"
-```
-
-Rules:
-
-- A store may use either `target` or `targets`, not both.
-- In multi-target mode, `files`, `patterns`, and `ignore` belong inside each `targets[]` entry.
-- If a store entry has no target yet, it is valid config but nothing is linked.
-
-### Top-level store fields
-
-| Field      | Required | Description                                      |
-| ---------- | -------- | ------------------------------------------------ |
-| `target`   | No       | Target path for a single-target store            |
-| `files`    | No       | Explicit list of files to link individually      |
-| `patterns` | No       | Glob patterns to match files; supports `**`      |
-| `ignore`   | No       | Glob patterns to exclude from linking            |
-| `hooks`    | No       | Per-store `pre` and `post` shell commands        |
-| `when`     | No       | Platform filter for this store                   |
-| `targets`  | No       | List of per-target entries for multi-target mode |
-
-### Nested `targets[]` fields
-
-| Field                | Required | Description                                         |
-| -------------------- | -------- | --------------------------------------------------- |
-| `targets[].target`   | Yes      | Target path for this target entry                   |
-| `targets[].files`    | No       | Explicit files to link individually for this target |
-| `targets[].patterns` | No       | Glob patterns to match files for this target        |
-| `targets[].ignore`   | No       | Glob patterns to exclude for this target            |
-
-### `hooks` fields
-
-| Field        | Required | Description                                          |
-| ------------ | -------- | ---------------------------------------------------- |
-| `hooks.pre`  | No       | Command run before link or unlink work for the store |
-| `hooks.post` | No       | Command run after link or unlink work for the store  |
-
-### `when` fields
-
-| Field                 | Required | Description                                                         |
-| --------------------- | -------- | ------------------------------------------------------------------- |
-| `when.os`             | No       | OS name such as `linux`, `darwin`, or `windows`                     |
-| `when.arch`           | No       | CPU architecture such as `amd64` or `arm64`                         |
-| `when.distro`         | No       | Distro or OS family such as `ubuntu`, `arch`, `macos`, or `windows` |
-| `when.distro_version` | No       | Distro version string                                               |
-| `when.hostname`       | No       | Hostname to match                                                   |
-| `when.shell`          | No       | Current shell name such as `zsh`, `bash`, `fish`, or `nu`           |
-| `when.wsl`            | No       | Whether the machine is running under WSL                            |
-
-### Matching and mode behavior
-
-- No `files` and no `patterns`: whole-directory mode.
-- Any `files` or `patterns`: file mode.
-- `files` and `patterns` can be used together; matches are combined and deduplicated.
-- `ignore` applies in both explicit file mode and pattern mode.
-- If whole-directory mode would include ignored content, `store` automatically promotes that target to file mode.
-
-### Pattern syntax
-
-| Pattern          | Matches                                          |
-| ---------------- | ------------------------------------------------ |
-| `.zsh*`          | `.zshrc`, `.zshenv`, and similar top-level files |
-| `*.conf`         | Top-level `.conf` files                          |
-| `**/*.conf`      | `.conf` files at any depth                       |
-| `config/*.lua`   | `.lua` files directly inside `config/`           |
-| `**/*.{lua,vim}` | `.lua` and `.vim` files recursively              |
-
-### Target path rules
-
-- `~` and `~/...` are supported on the CLI and in config.
-- In YAML, every `~` path must be quoted, for example `target: "~"` or `target: "~/.config/nvim"`.
-- Relative CLI target paths are resolved to absolute paths before being saved.
-
-## Hooks
-
-Hooks let you run shell commands around store operations. Use them for post-link reloads, cache rebuilds, or validation steps tied to a specific store or to the whole repo.
-
-Per-store hook example:
-
-```yaml
-stores:
-  tmux:
-    target: "~/.config/tmux"
-    hooks:
-      post: "tmux source-file ~/.config/tmux/tmux.conf 2>/dev/null || true"
-  nvim:
-    target: "~/.config/nvim"
-    hooks:
-      pre: "nvim --headless -c 'checkhealth' -c 'qa' 2>/dev/null"
-```
-
-Global hook layout:
-
-```text
-.store/hooks/
-  pre-store
-  post-store
-  pre-remove
-  post-remove
-```
-
-How it works:
-
-- Per-store hooks are configured in YAML and executed with `sh -c` on Linux and macOS, and with `cmd.exe /C` on Windows.
-- Global hooks live in `.store/hooks/`. On Linux and macOS they must have the executable bit set and are run directly via their shebang.
-- On Windows the executable bit is ignored; global hooks are dispatched by file extension: `.ps1` scripts run under PowerShell, `.cmd`/`.bat`/`.exe` run directly, and anything else is attempted via `sh` (works under Git Bash or WSL).
-
-Relevant details:
-
-- `pre` hooks abort that store on failure.
-- `post` hooks only warn on failure.
-- `pre-store` and `pre-remove` abort the whole command on failure.
-- Hooks receive `STORE_ROOT`, `STORE_ACTION`, and detected platform variables; per-store hooks also receive `STORE_NAME` and `STORE_TARGET`.
-
-## Secrets
-
-Secrets let you keep encrypted values in the repo while rendering those values into linked files locally at apply time.
-
-Template example:
-
-```yaml
-stores:
-  git:
-    target: "~/.config/git"
-    files:
-      - .gitconfig
-```
-
-```text
-[github]
-    token = {{ secret "github_token" }}
-```
-
-Usage example:
-
-```sh
-$ store secret set github_token
-$ store
-```
-
-How it works:
-
-- Template placeholders use `{{ secret "name" }}`.
-- `store` scans the selected store directories and only prompts for a passphrase if rendering is needed.
-- Secrets are stored in `.store/secrets.enc`.
-- Rendered files are written into a local staging directory under `$XDG_STATE_HOME/store/<repo-hash>/` or `~/.local/state/store/<repo-hash>/` if `XDG_STATE_HOME` is unset.
-- Files without secret placeholders are symlinked directly; rendered files are symlinked from the staging directory.
-
-Relevant details:
-
-- Encryption uses Argon2id for key derivation and XChaCha20-Poly1305 for authenticated encryption.
-- If a referenced secret is missing, the render step fails and the store operation stops.
-- The passphrase comes from `STORE_PASSPHRASE` or hidden interactive input.
-- `.store/secrets.enc` is designed to be committed; the plaintext secrets are not.
-
-## Platform Conditionals
-
-Platform conditionals let one repo serve multiple machines without separate branches or manual edits.
-
-Example:
-
-```yaml
-stores:
-  linux-shell:
-    target: "~"
-    files:
-      - .bashrc
-    when:
-      os: linux
-
-  work-tools:
-    target: "~/work"
-    when:
-      hostname: work-laptop
-
-  wsl-tools:
-    target: "~/.local/bin"
-    when:
-      wsl: true
-```
-
-How it works:
-
-- `store` compares each populated `when:` field against detected platform info.
-- All specified fields must match.
-- Stores without `when:` always apply.
-
-Relevant details:
-
-- Detected values include OS, arch, distro, distro version, hostname, shell, and WSL state.
-- Commands that operate on the configured set, such as `store`, `store diff`, and `store status`, skip non-matching stores.
-- `store doctor` reports skipped stores as informational issues so you can confirm the filter is doing what you expect.
-
-## Ignoring Files
-
-Ignore patterns exclude files or directories from linking. This is useful for editor backups, nested metadata, scratch files, or partial stores that should not be exposed at the target.
-
-Example:
-
-```yaml
-stores:
-  nvim:
-    target: "~/.config/nvim"
-    ignore:
-      - "*.bak"
-      - "scratch/"
-      - "**/*.test.lua"
-```
-
-How it works:
-
-- Global ignore patterns are always active: `.store`, `.store/**`, `.git`, `.git/**`, `.gitignore`, `.DS_Store`.
-- User-defined `ignore:` patterns are added on top of the global ignore set.
-- Directory ignore patterns such as `scratch/` exclude the whole directory tree.
-
-Relevant details:
-
-- Ignore matching uses the same glob engine as `patterns:`.
-- If a target has `ignore:` or if the store contains globally ignored files, whole-directory mode is automatically promoted to file mode so ignored content never appears at the target.
-- `ignore:` may be defined at the top level for single-target stores or inside each `targets[]` entry for multi-target stores.
-
 ## Shell Completion
 
 `store completion` generates completion scripts for supported shells. This is the easiest way to make the command and store-name arguments discoverable from the terminal.
@@ -836,16 +859,6 @@ Relevant details:
 | `[broken]`   | A symlink exists but points to a missing source                  |
 
 These statuses appear in `store status`, and the same underlying states drive `store diff`.
-
-## How It Works
-
-- **Root discovery:** commands can run from any subdirectory inside the repo; `store` walks upward until it finds `.store/`.
-- **Portable target storage:** CLI target paths keep `~` prefixes when possible so config stays portable across machines.
-- **Absolute symlinks:** link targets are resolved to absolute source paths so the working directory does not matter.
-- **Conflict resolution:** before linking, `store` detects files or directories already occupying the target and offers to move them into the repo. If files already exist in the store where moved content would land, `store` lists the `.bak` backups it would create.
-- **Whole-directory vs file mode:** no `files` or `patterns` means whole-directory mode unless ignored content forces promotion to file mode.
-- **Template staging:** secret-backed templates are rendered into a machine-local staging directory and linked from there.
-- **Performance:** explicit files use direct stat checks, non-recursive globs avoid full walks, and only `**` patterns trigger recursive traversal.
 
 ## Troubleshooting
 
