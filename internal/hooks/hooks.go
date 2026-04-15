@@ -83,15 +83,6 @@ func RunEntry(root, name, target, action, phase string, h *config.HookEntry) err
 	return nil
 }
 
-// buildShellCmd constructs the exec.Cmd that runs a hook command string under
-// the platform's default shell.
-func buildShellCmd(hookCmd string) *exec.Cmd {
-	if runtime.GOOS == "windows" {
-		return exec.Command("cmd.exe", "/C", hookCmd)
-	}
-	return exec.Command("sh", "-c", hookCmd)
-}
-
 // buildGlobalHookCmd decides how to execute a global hook script file. It
 // returns (cmd, true) if the script should run, or (nil, false) if it should
 // be silently skipped (e.g. POSIX file without the executable bit).
