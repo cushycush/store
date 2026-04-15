@@ -210,7 +210,15 @@ func TestLink(t *testing.T) {
 					t.Fatalf("Rel(target): %v", err)
 				}
 
-				return sourceRel, targetRel, sourceAbs
+				// After Chdir(root), Link resolves the relative source via
+				// filepath.Abs which reads os.Getwd — and macOS returns the
+				// canonical /private/var/... form. Mirror that on the expected
+				// side so the readlink comparison succeeds.
+				wantReadlink, err := filepath.EvalSymlinks(sourceAbs)
+				if err != nil {
+					t.Fatalf("EvalSymlinks(%q) error = %v", sourceAbs, err)
+				}
+				return sourceRel, targetRel, wantReadlink
 			},
 		},
 	}

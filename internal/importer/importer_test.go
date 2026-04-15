@@ -39,15 +39,40 @@ func TestScanWholeDirectorySymlink(t *testing.T) {
 		t.Fatalf("Scan() error = %v", err)
 	}
 
+	// Scan resolves symlinks and 8.3 short names; mirror that in the expected
+	// values so macOS (/private/var/folders) and Windows (RUNNER~1 vs
+	// runneradmin) comparisons succeed.
+	wantSource := resolvePath(t, storeDir)
 	want := []DiscoveredLink{{
 		StoreName: "nvim",
-		Source:    storeDir,
+		Source:    wantSource,
 		Target:    linkPath,
 		File:      "",
 	}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Scan() = %#v, want %#v", got, want)
 	}
+}
+
+// resolvePath returns the canonical path with symlinks and (on Windows) 8.3
+// short names resolved. Scan applies the same transformation internally, so
+// tests that build expected values from t.TempDir() paths must do the same.
+func resolvePath(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q) error = %v", path, err)
+	}
+	return resolved
+}
+
+// setTestHome points both HOME and USERPROFILE at the given directory so that
+// os.UserHomeDir() (which prefers USERPROFILE on Windows) agrees with the
+// POSIX-style HOME that the tool's config reads.
+func setTestHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 }
 
 func TestScanFileModeSymlinks(t *testing.T) {
@@ -81,8 +106,8 @@ func TestScanFileModeSymlinks(t *testing.T) {
 	}
 
 	want := []DiscoveredLink{
-		{StoreName: "shells", Source: bashrc, Target: filepath.Join(scanDir, ".bashrc"), File: ".bashrc"},
-		{StoreName: "shells", Source: zshrc, Target: filepath.Join(scanDir, ".zshrc"), File: ".zshrc"},
+		{StoreName: "shells", Source: resolvePath(t, bashrc), Target: filepath.Join(scanDir, ".bashrc"), File: ".bashrc"},
+		{StoreName: "shells", Source: resolvePath(t, zshrc), Target: filepath.Join(scanDir, ".zshrc"), File: ".zshrc"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Scan() = %#v, want %#v", got, want)
@@ -118,7 +143,7 @@ func TestScanSkipsNonRepoSymlinksAndRegularFiles(t *testing.T) {
 
 func TestToConfigGroupingAndMixedMode(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	repoRoot := t.TempDir()
 
 	links := []DiscoveredLink{
@@ -175,7 +200,7 @@ func TestToConfigGroupingAndMixedMode(t *testing.T) {
 
 func TestToConfigMultiTargetAndHomePortability(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	repoRoot := t.TempDir()
 
 	links := []DiscoveredLink{

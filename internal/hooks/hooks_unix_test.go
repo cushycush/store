@@ -32,7 +32,13 @@ func TestRunGlobalUnix(t *testing.T) {
 				assertFileContains(t, filepath.Join(root, "hook-env.txt"), "STORE_ROOT="+root)
 				assertFileContains(t, filepath.Join(root, "hook-env.txt"), "STORE_ACTION="+action)
 				assertPlatformEnvVars(t, filepath.Join(root, "hook-env.txt"))
-				assertTrimmedFileEquals(t, filepath.Join(root, "hook-pwd.txt"), root)
+				// macOS `pwd` prints the canonicalized path (/private/var/...)
+				// while t.TempDir() returns the symlinked /var/... form.
+				canonical, err := filepath.EvalSymlinks(root)
+				if err != nil {
+					t.Fatalf("EvalSymlinks(%q) error = %v", root, err)
+				}
+				assertTrimmedFileEquals(t, filepath.Join(root, "hook-pwd.txt"), canonical)
 			},
 		},
 		{

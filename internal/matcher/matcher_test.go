@@ -222,8 +222,11 @@ func assertPathsEqual(t *testing.T, got []string, want []string) {
 		t.Fatalf("Match() returned %v, want %v", got, want)
 	}
 
+	// Match returns paths using the OS-native separator, but test data is
+	// written with forward slashes for readability. Normalize both sides to
+	// forward slashes before comparing so the same table works on Windows.
 	for i := range want {
-		if got[i] != want[i] {
+		if filepath.ToSlash(got[i]) != filepath.ToSlash(want[i]) {
 			t.Fatalf("Match() returned %v, want %v", got, want)
 		}
 	}

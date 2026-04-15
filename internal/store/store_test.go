@@ -37,17 +37,6 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
-func createExecutableScript(t *testing.T, root, rel, body string) string {
-	t.Helper()
-
-	path := filepath.Join(root, rel)
-	writeTestFile(t, path, "#!/bin/sh\n"+body+"\n")
-	if err := os.Chmod(path, 0o755); err != nil {
-		t.Fatalf("Chmod(%q): %v", path, err)
-	}
-	return path
-}
-
 func mustSymlink(t *testing.T, target, linkPath string) {
 	t.Helper()
 
@@ -348,10 +337,12 @@ func TestStore(t *testing.T) {
 			setup: func(t *testing.T, root string) config.StoreEntry {
 				t.Helper()
 				createStore(t, root, "app", map[string]string{"config.txt": "data"})
-				script := createExecutableScript(t, root, filepath.Join("scripts", "pre-fail.sh"), "exit 1")
+				// `exit 1` is valid in both sh -c and cmd.exe /C, so this
+				// exercises the abort path on every platform without needing
+				// a shell-script file with a platform-specific shebang.
 				return config.StoreEntry{
 					Target: filepath.Join(root, "targets", "app"),
-					Hooks:  &config.HookEntry{Pre: script},
+					Hooks:  &config.HookEntry{Pre: "exit 1"},
 				}
 			},
 			wantErr: "hook pre (app) failed",
@@ -365,10 +356,9 @@ func TestStore(t *testing.T) {
 			setup: func(t *testing.T, root string) config.StoreEntry {
 				t.Helper()
 				createStore(t, root, "app", map[string]string{"config.txt": "data"})
-				script := createExecutableScript(t, root, filepath.Join("scripts", "post-fail.sh"), "exit 1")
 				return config.StoreEntry{
 					Target: filepath.Join(root, "targets", "app"),
-					Hooks:  &config.HookEntry{Post: script},
+					Hooks:  &config.HookEntry{Post: "exit 1"},
 				}
 			},
 			check: func(t *testing.T, root string, entry config.StoreEntry) {
@@ -630,8 +620,7 @@ func TestStoreRemove(t *testing.T) {
 				if err := Store(root, "app", base); err != nil {
 					t.Fatalf("Store() setup error: %v", err)
 				}
-				script := createExecutableScript(t, root, filepath.Join("scripts", "unlink-pre-fail.sh"), "exit 1")
-				base.Hooks = &config.HookEntry{Pre: script}
+				base.Hooks = &config.HookEntry{Pre: "exit 1"}
 				return base
 			},
 			wantErr: "hook pre (app) failed",
@@ -649,8 +638,7 @@ func TestStoreRemove(t *testing.T) {
 				if err := Store(root, "app", base); err != nil {
 					t.Fatalf("Store() setup error: %v", err)
 				}
-				script := createExecutableScript(t, root, filepath.Join("scripts", "unlink-post-fail.sh"), "exit 1")
-				base.Hooks = &config.HookEntry{Post: script}
+				base.Hooks = &config.HookEntry{Post: "exit 1"}
 				return base
 			},
 			check: func(t *testing.T, root string, entry config.StoreEntry) {

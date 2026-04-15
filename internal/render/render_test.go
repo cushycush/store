@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -149,8 +150,17 @@ func TestNeedsRendering(t *testing.T) {
 		{
 			name: "skips directories themselves",
 			setup: func(t *testing.T, dir string) {
-				if err := os.MkdirAll(filepath.Join(dir, "{{ secret \"dir\" }}"), 0o755); err != nil {
-					t.Fatalf("MkdirAll() failed: %v", err)
+				if runtime.GOOS == "windows" {
+					// NTFS disallows `"` in filenames, so fall back to a
+					// template-free directory name that still exercises the
+					// "non-template directory is skipped" path.
+					if err := os.MkdirAll(filepath.Join(dir, "plain-dir"), 0o755); err != nil {
+						t.Fatalf("MkdirAll() failed: %v", err)
+					}
+				} else {
+					if err := os.MkdirAll(filepath.Join(dir, "{{ secret \"dir\" }}"), 0o755); err != nil {
+						t.Fatalf("MkdirAll() failed: %v", err)
+					}
 				}
 				writeTestFile(t, filepath.Join(dir, "plain.txt"), `no secrets here`)
 			},
@@ -200,12 +210,19 @@ func TestStagingDir(t *testing.T) {
 				home := t.TempDir()
 				t.Setenv("XDG_STATE_HOME", "")
 				t.Setenv("HOME", home)
+				// os.UserHomeDir() reads USERPROFILE on Windows; mirror HOME
+				// into it so the fallback computation agrees with the test.
+				t.Setenv("USERPROFILE", home)
 			},
 			makeRoots: func(t *testing.T) (string, string) {
 				return t.TempDir(), ""
 			},
 			wantPrefix: func() string {
-				return filepath.Join(os.Getenv("HOME"), ".local", "state")
+				home := os.Getenv("HOME")
+				if runtime.GOOS == "windows" {
+					home = os.Getenv("USERPROFILE")
+				}
+				return filepath.Join(home, ".local", "state")
 			},
 		},
 		{
@@ -283,7 +300,9 @@ func TestPrepareStaging(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Stat(%q) failed: %v", renderedPath, err)
 				}
-				if info.Mode().Perm() != 0o600 {
+				// Windows doesn't honor POSIX permission bits on os.WriteFile,
+				// so only assert the restrictive 0o600 mode on POSIX.
+				if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 					t.Fatalf("rendered file mode = %o, want 600", info.Mode().Perm())
 				}
 
