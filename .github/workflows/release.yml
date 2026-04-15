@@ -51,11 +51,12 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
+          EXTENSION=""
           if [ "${{ matrix.os }}" = "windows" ]; then
-            powershell -Command "Compress-Archive -Path 'store-*.exe' -DestinationPath 'store-${VERSION}-${{ matrix.os }}-${{ matrix.arch }}.zip'"
-          else
-            zip "store-${VERSION}-${{ matrix.os }}-${{ matrix.arch }}.zip" "store-${VERSION}-${{ matrix.os }}-${{ matrix.arch }}"
+            EXTENSION=".exe"
           fi
+          BASE="store-${VERSION}-${{ matrix.os }}-${{ matrix.arch }}"
+          zip "${BASE}.zip" "${BASE}${EXTENSION}"
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
