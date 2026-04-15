@@ -53,10 +53,59 @@ func TestDetectShell(t *testing.T) {
 	t.Run("SHELL empty", func(t *testing.T) {
 		t.Setenv("SHELL", "")
 		got := detectShell()
-		if got != "" {
+		if runtime.GOOS != "windows" && got != "" {
 			t.Errorf("detectShell() = %q, want empty", got)
 		}
 	})
+}
+
+func TestDetectShellFromEnv(t *testing.T) {
+	tests := []struct {
+		name string
+		goos string
+		env  map[string]string
+		want string
+	}{
+		{
+			name: "SHELL wins on windows",
+			goos: "windows",
+			env:  map[string]string{"SHELL": "/usr/bin/bash", "PSModulePath": "anything", "ComSpec": `C:\Windows\System32\cmd.exe`},
+			want: "bash",
+		},
+		{
+			name: "windows PSModulePath fallback",
+			goos: "windows",
+			env:  map[string]string{"PSModulePath": `C:\Users\x\Modules`, "ComSpec": `C:\Windows\System32\cmd.exe`},
+			want: "powershell",
+		},
+		{
+			name: "windows ComSpec fallback",
+			goos: "windows",
+			env:  map[string]string{"ComSpec": `C:\Windows\System32\cmd.exe`},
+			want: "cmd",
+		},
+		{
+			name: "windows all empty",
+			goos: "windows",
+			env:  map[string]string{},
+			want: "",
+		},
+		{
+			name: "linux SHELL unset stays empty",
+			goos: "linux",
+			env:  map[string]string{"PSModulePath": "ignored", "ComSpec": "ignored"},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			getenv := func(key string) string { return tt.env[key] }
+			if got := detectShellFromEnv(tt.goos, getenv); got != tt.want {
+				t.Errorf("detectShellFromEnv(%q) = %q, want %q", tt.goos, got, tt.want)
+			}
+		})
+	}
 }
 
 func TestEnvVars(t *testing.T) {

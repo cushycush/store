@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -160,6 +161,13 @@ func TestStoreTargetWithSecrets(t *testing.T) {
 
 func TestStoreWithSecrets(t *testing.T) {
 	t.Run("hooks use repo root while linking staged source", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			// The hook commands use POSIX `printf` and `$VAR` expansion which
+			// aren't native to cmd.exe. The platform-agnostic behavior (hooks
+			// receive STORE_ROOT/NAME/TARGET/ACTION) is covered by
+			// internal/hooks/hooks_windows_test.go.
+			t.Skip("uses POSIX shell syntax; equivalent coverage lives in hooks_windows_test.go")
+		}
 		root := t.TempDir()
 		createStore(t, root, "app", map[string]string{"config.toml": testTemplateContent})
 

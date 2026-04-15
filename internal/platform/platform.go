@@ -61,11 +61,35 @@ func (i Info) EnvVars() []string {
 }
 
 func detectShell() string {
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		return ""
+	return detectShellFromEnv(runtime.GOOS, os.Getenv)
+}
+
+// detectShellFromEnv is the testable core of detectShell. On any OS it first
+// honors $SHELL. On Windows it additionally falls back to PSModulePath
+// (PowerShell) and ComSpec (cmd.exe) when $SHELL is unset.
+func detectShellFromEnv(goos string, getenv func(string) string) string {
+	if shell := getenv("SHELL"); shell != "" {
+		return filepath.Base(shell)
 	}
-	return filepath.Base(shell)
+	if goos == "windows" {
+		if getenv("PSModulePath") != "" {
+			return "powershell"
+		}
+		if comspec := getenv("ComSpec"); comspec != "" {
+			// ComSpec uses Windows separators, so normalize before splitting
+			// rather than relying on host-specific filepath.Base behavior.
+			normalized := strings.ReplaceAll(comspec, `\`, "/")
+			base := normalized
+			if idx := strings.LastIndex(normalized, "/"); idx >= 0 {
+				base = normalized[idx+1:]
+			}
+			if idx := strings.LastIndex(base, "."); idx >= 0 {
+				base = base[:idx]
+			}
+			return strings.ToLower(base)
+		}
+	}
+	return ""
 }
 
 func detectWSL() bool {

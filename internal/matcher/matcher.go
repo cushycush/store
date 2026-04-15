@@ -15,12 +15,16 @@ var GlobalIgnore = []string{".store", ".store/**", ".git", ".git/**", ".gitignor
 
 // isIgnored checks if a relative path matches any ignore pattern.
 func isIgnored(relPath string, ignorePatterns []string) bool {
+	// doublestar patterns are always forward-slash; normalize the input path
+	// so `.store/config.yaml` matches even when Windows produced
+	// `.store\config.yaml` from filepath.Clean.
+	slashPath := filepath.ToSlash(relPath)
 	for _, pattern := range ignorePatterns {
-		if matched, _ := doublestar.Match(pattern, relPath); matched {
+		if matched, _ := doublestar.Match(pattern, slashPath); matched {
 			return true
 		}
 		dirPattern := strings.TrimSuffix(pattern, "/") + "/**"
-		if matched, _ := doublestar.Match(dirPattern, relPath); matched {
+		if matched, _ := doublestar.Match(dirPattern, slashPath); matched {
 			return true
 		}
 	}

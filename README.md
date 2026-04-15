@@ -85,7 +85,7 @@ $ go install github.com/cush/store/cmd/store@latest
 ```sh
 $ git clone https://github.com/cush/store.git
 $ cd store
-$ make build VERSION=1.1.1
+$ make build VERSION=1.2.0
 $ mv store /usr/local/bin/
 ```
 
@@ -462,7 +462,7 @@ $ store --version
 ```
 
 ```text
-store version 1.1.1
+store version 1.2.0
 ```
 
 If built without an injected version, the binary reports `dev`.
@@ -666,9 +666,9 @@ Global hook layout:
 
 How it works:
 
-- Per-store hooks are configured in YAML and executed with `sh -c`.
-- Global hooks are executable files in `.store/hooks/` and are run directly.
-- Global hook scripts must have the executable bit set; non-executable files are ignored.
+- Per-store hooks are configured in YAML and executed with `sh -c` on Linux and macOS, and with `cmd.exe /C` on Windows.
+- Global hooks live in `.store/hooks/`. On Linux and macOS they must have the executable bit set and are run directly via their shebang.
+- On Windows the executable bit is ignored; global hooks are dispatched by file extension: `.ps1` scripts run under PowerShell, `.cmd`/`.bat`/`.exe` run directly, and anything else is attempted via `sh` (works under Git Bash or WSL).
 
 Relevant details:
 
