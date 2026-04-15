@@ -210,15 +210,7 @@ func TestLink(t *testing.T) {
 					t.Fatalf("Rel(target): %v", err)
 				}
 
-				// After Chdir(root), Link resolves the relative source via
-				// filepath.Abs which reads os.Getwd — and macOS returns the
-				// canonical /private/var/... form. Mirror that on the expected
-				// side so the readlink comparison succeeds.
-				wantReadlink, err := filepath.EvalSymlinks(sourceAbs)
-				if err != nil {
-					t.Fatalf("EvalSymlinks(%q) error = %v", sourceAbs, err)
-				}
-				return sourceRel, targetRel, wantReadlink
+				return sourceRel, targetRel, sourceAbs
 			},
 		},
 	}
@@ -250,7 +242,19 @@ func TestLink(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Readlink(%q): %v", target, err)
 			}
-			if gotReadlink != wantReadlink {
+			// Normalize via EvalSymlinks so macOS canonicalization
+			// (/private/var/...) and Windows 8.3 short names don't cause
+			// cosmetic mismatches — Link and the expected path may come
+			// from different resolution paths.
+			gotResolved, err := filepath.EvalSymlinks(gotReadlink)
+			if err != nil {
+				t.Fatalf("EvalSymlinks(%q) error = %v", gotReadlink, err)
+			}
+			wantResolved, err := filepath.EvalSymlinks(wantReadlink)
+			if err != nil {
+				t.Fatalf("EvalSymlinks(%q) error = %v", wantReadlink, err)
+			}
+			if gotResolved != wantResolved {
 				t.Fatalf("Readlink(%q) = %q, want %q", target, gotReadlink, wantReadlink)
 			}
 

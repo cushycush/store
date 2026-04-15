@@ -1,6 +1,7 @@
 package doctor
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -81,8 +82,10 @@ func TestCheckBrokenSymlink(t *testing.T) {
 
 	issues := Check(root)
 	assertIssues(t, issues, []Issue{{
-		Level:   "error",
-		Message: `store "nvim" target "` + target + `" has a broken symlink`,
+		Level: "error",
+		// Doctor formats paths with %q, which escapes backslashes on Windows;
+		// mirror that here so this test works on every platform.
+		Message: fmt.Sprintf("store %q target %q has a broken symlink", "nvim", target),
 	}})
 }
 
@@ -101,7 +104,7 @@ func TestCheckConflictingTargets(t *testing.T) {
 	issues := Check(root)
 	assertIssues(t, issues, []Issue{{
 		Level:   "error",
-		Message: `target "` + target + `" is claimed by both store "nvim" and store "nvim-custom"`,
+		Message: fmt.Sprintf("target %q is claimed by both store %q and store %q", target, "nvim", "nvim-custom"),
 	}})
 }
 

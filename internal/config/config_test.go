@@ -726,14 +726,18 @@ func TestFindRoot(t *testing.T) {
 					t.Fatalf("FindRoot() error = %v", err)
 				}
 				// macOS canonicalizes /var/folders → /private/var/folders on
-				// Chdir, and Windows resolves 8.3 short names; both affect
-				// the path returned by os.Getwd() inside FindRoot.
-				want, err := filepath.EvalSymlinks(tt.want(cwd))
+				// Chdir, and Windows returns 8.3 short names from Getwd.
+				// Normalize both sides so the comparison is platform-neutral.
+				gotResolved, err := filepath.EvalSymlinks(got)
+				if err != nil {
+					t.Fatalf("EvalSymlinks(%q) error = %v", got, err)
+				}
+				wantResolved, err := filepath.EvalSymlinks(tt.want(cwd))
 				if err != nil {
 					t.Fatalf("EvalSymlinks(%q) error = %v", tt.want(cwd), err)
 				}
-				if got != want {
-					t.Fatalf("FindRoot() = %q, want %q", got, want)
+				if gotResolved != wantResolved {
+					t.Fatalf("FindRoot() = %q, want %q", got, tt.want(cwd))
 				}
 				return
 			}
