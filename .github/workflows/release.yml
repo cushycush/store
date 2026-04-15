@@ -3,41 +3,64 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - 'v*.*.*'
 
 permissions:
   contents: write
 
 jobs:
   release:
+    name: Release ${{ matrix.os }}-${{ matrix.arch }}
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        os: [linux, darwin, windows]
+        arch: [amd64, arm64]
+        exclude:
+          - os: windows
+            arch: arm64
+
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: Import AUR SSH key
-        if: env.AUR_KEY != ''
-        env:
-          AUR_KEY: ${{ secrets.AUR_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$AUR_KEY" > ~/.ssh/aur
-          chmod 600 ~/.ssh/aur
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: "~> v2"
-          args: release --clean
+      - name: Build
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          AUR_KEY: ${{ secrets.AUR_KEY }}
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          EXTENSION=""
+          if [ "$GOOS" = "windows" ]; then
+            EXTENSION=".exe"
+          fi
+          NAME="store-${VERSION}-${{ matrix.os }}-${{ matrix.arch }}${EXTENSION}"
+          go build -ldflags="-s -w -X main.version=${VERSION}" -o "${NAME}" ./cmd/store
+
+      - name: Create ZIP archive
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            powershell -Command "Compress-Archive -Path 'store-*.exe' -DestinationPath 'store-${VERSION}-${{ matrix.os }}-${{ matrix.arch }}.zip'"
+          else
+            zip "store-${VERSION}-${{ matrix.os }}-${{ matrix.arch }}.zip" "store-${VERSION}-${{ matrix.os }}-${{ matrix.arch }}"
+          fi
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            store-*.zip
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
