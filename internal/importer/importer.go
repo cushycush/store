@@ -216,11 +216,11 @@ func pathWithinRepo(repoRoot, path string) (string, bool) {
 	return rel, true
 }
 
-func portablePath(path string) string {
-	cleaned := filepath.Clean(path)
+func portablePath(p string) string {
+	cleaned := filepath.Clean(p)
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
-		return cleaned
+		return filepath.ToSlash(cleaned)
 	}
 
 	home = filepath.Clean(home)
@@ -230,10 +230,13 @@ func portablePath(path string) string {
 
 	prefix := home + string(os.PathSeparator)
 	if suffix, ok := strings.CutPrefix(cleaned, prefix); ok {
-		return filepath.Join("~", suffix)
+		// Config files should use forward slashes so they're readable and
+		// portable across machines; filepath.Join would produce backslashes
+		// on Windows.
+		return "~/" + filepath.ToSlash(suffix)
 	}
 
-	return cleaned
+	return filepath.ToSlash(cleaned)
 }
 
 func sortedKeys(m map[string]struct{}) []string {
