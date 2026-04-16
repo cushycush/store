@@ -1,1 +1,19 @@
 .opencode/
+store
+
+# IDE / editor
+.idea
+.vscode
+
+# Tool configs
+.mcp.json
+.ripgreprc
+
+# Shell profiles (user-local)
+.bash_profile
+.bashrc
+.profile
+.zprofile
+.zshrc
+.gitconfig
+.gitmodules
