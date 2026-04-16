@@ -76,7 +76,7 @@ Example result after running `store`:
 ### go install
 
 ```sh
-$ go install github.com/cush/store/cmd/store@latest
+$ go install github.com/cushycush/store/cmd/store@latest
 ```
 
 ### Build from source
