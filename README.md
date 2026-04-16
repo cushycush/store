@@ -857,8 +857,11 @@ Relevant details:
 | `[missing]`  | No symlink exists yet                                            |
 | `[conflict]` | A non-store file or directory exists where `store` wants to link |
 | `[broken]`   | A symlink exists but points to a missing source                  |
+| `[drift]`    | A rendered file exists at the target but its content has changed |
 
 These statuses appear in `store status`, and the same underlying states drive `store diff`.
+
+`store status` also prints a summary line showing the count of each status across all reported stores.
 
 ## Troubleshooting
 
