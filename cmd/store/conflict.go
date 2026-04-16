@@ -44,7 +44,7 @@ func checkBackups(conflicts []storeops.ConflictInfo) error {
 
 // storeWithConflictResolution checks for conflicts, prompts the user to resolve
 // them, then creates symlinks for all targets in the entry.
-func storeWithConflictResolution(root, name string, entry config.StoreEntry, secrets map[string]string) error {
+func storeWithConflictResolution(root, name string, entry config.StoreEntry, rc *storeops.RenderContext) error {
 	conflicts, err := storeops.CollectConflicts(root, name, entry)
 	if err != nil {
 		return err
@@ -52,12 +52,12 @@ func storeWithConflictResolution(root, name string, entry config.StoreEntry, sec
 	if err := resolveConflicts(conflicts); err != nil {
 		return err
 	}
-	return storeops.StoreWithSecrets(root, name, entry, secrets)
+	return storeops.StoreWithSecrets(root, name, entry, rc)
 }
 
 // storeTargetWithConflictResolution checks for conflicts on a single target,
 // prompts the user, resolves them, then creates symlinks.
-func storeTargetWithConflictResolution(root, name string, targetEntry config.TargetEntry, secrets map[string]string) error {
+func storeTargetWithConflictResolution(root, name string, targetEntry config.TargetEntry, rc *storeops.RenderContext) error {
 	conflicts, err := storeops.CollectTargetConflicts(root, name, targetEntry)
 	if err != nil {
 		return err
@@ -65,12 +65,12 @@ func storeTargetWithConflictResolution(root, name string, targetEntry config.Tar
 	if err := resolveConflicts(conflicts); err != nil {
 		return err
 	}
-	return storeops.StoreTargetWithSecrets(root, name, targetEntry, secrets)
+	return storeops.StoreTargetWithSecrets(root, name, targetEntry, rc)
 }
 
 // storeAllWithConflictResolution checks for conflicts across all stores,
 // prompts once, resolves, then creates all symlinks.
-func storeAllWithConflictResolution(root string, cfg *config.Config, secrets map[string]string) error {
+func storeAllWithConflictResolution(root string, cfg *config.Config, rc *storeops.RenderContext) error {
 	if len(cfg.Stores) == 0 {
 		return fmt.Errorf("no stores defined in config")
 	}
@@ -87,7 +87,7 @@ func storeAllWithConflictResolution(root string, cfg *config.Config, secrets map
 	if err := resolveConflicts(conflicts); err != nil {
 		return err
 	}
-	return storeops.StoreAllWithSecrets(root, cfg, secrets)
+	return storeops.StoreAllWithSecrets(root, cfg, rc)
 }
 
 func resolveConflicts(conflicts []storeops.ConflictInfo) error {
