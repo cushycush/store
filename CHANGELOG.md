@@ -4,6 +4,28 @@ All notable changes to `store` are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-04-16
+
+### Added
+- `store adopt` command: move an existing file or directory into the repo, create
+  a config entry, and symlink back. Supports `--name`, `--dry-run`, `--files`,
+  and `--patterns` flags.
+- Template engine rewrite using Go `text/template`. Templates now support
+  `{{ env "VAR" }}`, `{{ .Hostname }}`, `{{ .OS }}`, `{{ .Arch }}`, `{{ .Distro }}`,
+  `{{ .Shell }}`, and user-defined `{{ .Vars.key }}` variables in addition to
+  `{{ secret "name" }}`.
+- Top-level `vars` map in config for user-defined template variables.
+- `Render` flag on store and target entries for explicit template rendering control.
+- `[drift]` status indicator for rendered files whose target content has diverged.
+- Status summary line in `store status` output showing counts per status.
+- `FORCE_COLOR` environment variable to force colored output in non-TTY contexts.
+- Verbose mode (`-v`/`--verbose`) for `test.sh` showing store commands and their
+  colorized output.
+
+### Changed
+- `RenderContext` struct replaces raw secrets map throughout store and CLI layers,
+  bundling secrets with platform data and user-defined variables.
+
 ## [1.2.2] - 2026-04-15
 
 ### Added
