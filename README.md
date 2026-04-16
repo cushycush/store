@@ -69,6 +69,7 @@ Example result after running `store`:
 | **Shell completion**         | Shell-specific setup outside the tool                   | `store completion` generates scripts for major shells              |
 | **Health checks (doctor)**   | No built-in diagnostics command                         | `store doctor` checks config, targets, secrets, and platform skips |
 | **Import existing symlinks** | No import command                                       | `store import` scans existing symlinks and writes config           |
+| **Adopt existing files**     | Manual move-and-link workflow                           | `store adopt` moves files into the repo and symlinks back          |
 | **Dry run preview**          | No built-in preview command                             | `store diff` shows create/replace/conflict actions before changes  |
 
 ## Installation
@@ -99,7 +100,13 @@ $ git init
 $ store init
 ```
 
-2. Add a whole-directory store:
+2. Adopt an existing config directory (moves it into the repo and symlinks back):
+
+```sh
+$ store adopt ~/.config/nvim
+```
+
+   Or create a store manually and point it at a target:
 
 ```sh
 $ store add nvim -t ~/.config/nvim
@@ -535,6 +542,41 @@ Relevant details:
 
 - Without `--dry-run`, `store import` prints the discovered mapping and asks for confirmation before writing config.
 - The persistent `--force` flag skips that confirmation prompt.
+
+### `store adopt <path>`
+
+Takes an existing file or directory, moves it into the repo, creates a config entry, and symlinks back to the original location.
+
+| Flag         | Short | Description                                                 |
+| ------------ | ----- | ----------------------------------------------------------- |
+| `--name`     | `-n`  | Override the derived store name                             |
+| `--dry-run`  |       | Preview what would happen without making changes            |
+| `--files`    | `-f`  | Only adopt specific files from a directory; repeatable      |
+| `--patterns` | `-p`  | Only adopt files matching glob patterns; repeatable         |
+
+```sh
+$ store adopt ~/.config/nvim
+$ store adopt ~/.zshrc
+$ store adopt ~/.config/nvim --name vim
+$ store adopt ~/.config/app -f config.toml -f settings.json
+$ store adopt ~/.config/nvim --dry-run
+```
+
+```text
+$ store adopt ~/.config/nvim
+Adopting:
+  ~/.config/nvim -> nvim/ (directory)
+Proceed? [y/N] y
+  nvim -> ~/.config/nvim
+```
+
+How it works:
+
+- Directories are moved whole into the repo and symlinked back.
+- Single files are placed into a store directory named after the file (leading dots stripped), with the target set to the file's parent directory.
+- The store name is derived from the path basename. Use `--name` to override.
+- `--files` and `--patterns` adopt only matching files from a directory, creating a file-mode store entry.
+- Rejects paths that are already symlinks — use `store import` for those.
 
 ### `store add <name>`
 
