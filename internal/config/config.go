@@ -20,6 +20,7 @@ type TargetEntry struct {
 	Files    []string `yaml:"files,omitempty"`
 	Patterns []string `yaml:"patterns,omitempty"`
 	Ignore   []string `yaml:"ignore,omitempty"`
+	Render   bool     `yaml:"render,omitempty"`
 }
 
 // HookEntry defines pre and post shell commands to run around store operations.
@@ -86,6 +87,7 @@ type StoreEntry struct {
 	Files    []string      `yaml:"files,omitempty"`
 	Patterns []string      `yaml:"patterns,omitempty"`
 	Ignore   []string      `yaml:"ignore,omitempty"`
+	Render   bool          `yaml:"render,omitempty"`
 	Targets  []TargetEntry `yaml:"targets,omitempty"`
 	Hooks    *HookEntry    `yaml:"hooks,omitempty"`
 	When     *WhenClause   `yaml:"when,omitempty"`
@@ -121,6 +123,7 @@ func (e StoreEntry) ResolvedTargets() []TargetEntry {
 		Files:    e.Files,
 		Patterns: e.Patterns,
 		Ignore:   e.Ignore,
+		Render:   e.Render,
 	}}
 }
 
@@ -157,11 +160,13 @@ func (e *StoreEntry) MigrateToMultiTarget() {
 			Files:    e.Files,
 			Patterns: e.Patterns,
 			Ignore:   e.Ignore,
+			Render:   e.Render,
 		})
 		e.Target = ""
 		e.Files = nil
 		e.Patterns = nil
 		e.Ignore = nil
+		e.Render = false
 	}
 }
 
@@ -173,6 +178,7 @@ func (e *StoreEntry) MigrateToSingleTarget() {
 		e.Files = t.Files
 		e.Patterns = t.Patterns
 		e.Ignore = t.Ignore
+		e.Render = t.Render
 		e.Targets = nil
 	}
 }
@@ -180,6 +186,7 @@ func (e *StoreEntry) MigrateToSingleTarget() {
 // Config represents the full .store/config.yaml file.
 type Config struct {
 	Stores map[string]StoreEntry `yaml:"stores"`
+	Vars   map[string]string     `yaml:"vars,omitempty"`
 }
 
 // ConfigPath returns the path to the config file given a repo root.

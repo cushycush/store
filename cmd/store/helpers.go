@@ -14,6 +14,7 @@ import (
 	"github.com/cushycush/store/internal/platform"
 	"github.com/cushycush/store/internal/render"
 	"github.com/cushycush/store/internal/secrets"
+	storeops "github.com/cushycush/store/internal/store"
 	"github.com/cushycush/store/internal/ui"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -74,10 +75,12 @@ func completeStoreNames(cmd *cobra.Command, args []string, toComplete string) ([
 	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
-// loadSecretsIfNeeded checks if any of the given store directories contain template
-// placeholders. If so, prompts for passphrase and returns decrypted secrets.
-// Returns nil if no rendering is needed.
-func loadSecretsIfNeeded(root string, names ...string) (map[string]string, error) {
+// buildRenderContext checks if any of the given store directories contain template
+// placeholders. If so, prompts for passphrase and loads secrets. Always populates
+// platform template data and user-defined vars from config.
+func buildRenderContext(root string, cfg *config.Config, names ...string) (*storeops.RenderContext, error) {
+	var secretMap map[string]string
+
 	for _, name := range names {
 		storeDir := filepath.Join(root, name)
 		needsRendering, err := render.NeedsRendering(storeDir)
@@ -92,10 +95,27 @@ func loadSecretsIfNeeded(root string, names ...string) (map[string]string, error
 		if err != nil {
 			return nil, err
 		}
-		return secrets.Load(root, passphrase)
+		secretMap, err = secrets.Load(root, passphrase)
+		if err != nil {
+			return nil, err
+		}
+		break
 	}
 
-	return nil, nil
+	info := platform.Detect()
+	data := &render.TemplateData{
+		Hostname: info.Hostname,
+		OS:       info.OS,
+		Arch:     info.Arch,
+		Distro:   info.Distro,
+		Shell:    info.Shell,
+		Vars:     cfg.Vars,
+	}
+
+	return &storeops.RenderContext{
+		Secrets:      secretMap,
+		TemplateData: data,
+	}, nil
 }
 
 // resolveTargetPath normalizes a target path for storage: expands ~ prefix,

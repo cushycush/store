@@ -11,7 +11,7 @@
 - [Concepts](#concepts)
 - [Config Format](#config-format)
 - [Hooks](#hooks)
-- [Secrets](#secrets)
+- [Templates & Secrets](#templates--secrets)
 - [Platform Conditionals](#platform-conditionals)
 - [Ignoring Files](#ignoring-files)
 - [How It Works](#how-it-works)
@@ -162,9 +162,12 @@ Six ideas to keep in mind before you read the command reference. The rest of the
 
 Configuration lives in `.store/config.yaml`.
 
-Single-target format:
+Top-level format:
 
 ```yaml
+vars:
+  editor: nvim
+
 stores:
   nvim:
     target: "~/.config/nvim"
@@ -206,6 +209,7 @@ Rules:
 - A store may use either `target` or `targets`, not both.
 - In multi-target mode, `files`, `patterns`, and `ignore` belong inside each `targets[]` entry.
 - If a store entry has no target yet, it is valid config but nothing is linked.
+- `vars` is a top-level map alongside `stores`; values are accessible in templates as `{{ .Vars.key }}`.
 
 ### Top-level store fields
 
@@ -304,26 +308,52 @@ Relevant details:
 - `pre-store` and `pre-remove` abort the whole command on failure.
 - Hooks receive `STORE_ROOT`, `STORE_ACTION`, and detected platform variables; per-store hooks also receive `STORE_NAME` and `STORE_TARGET`.
 
-## Secrets
+## Templates & Secrets
 
-A secret is an encrypted value stored in `.store/secrets.enc` and rendered into a linked file at apply time using the `{{ secret "name" }}` template tag. Secrets let you keep encrypted values in the repo while rendering those values into linked files locally at apply time.
+Files in a store can contain Go `text/template` expressions. When `store` links or restores a store, it renders these templates into a local staging directory and symlinks the rendered output. Files without template expressions are symlinked directly.
 
-Template example:
+### Template functions
+
+| Expression                 | Description                                            |
+| -------------------------- | ------------------------------------------------------ |
+| `{{ secret "name" }}`      | Looks up an encrypted secret by name                   |
+| `{{ env "VAR" }}`          | Reads an environment variable                          |
+| `{{ .Hostname }}`          | Current machine hostname                               |
+| `{{ .OS }}`                | Operating system (`linux`, `darwin`, `windows`)         |
+| `{{ .Arch }}`              | CPU architecture (`amd64`, `arm64`, etc.)              |
+| `{{ .Distro }}`            | Distro or OS family (`ubuntu`, `arch`, `macos`, etc.)  |
+| `{{ .Shell }}`             | Current shell name (`zsh`, `bash`, `fish`, etc.)       |
+| `{{ .Vars.key }}`          | User-defined variable from config `vars:` map          |
+
+### User-defined variables
+
+The top-level `vars:` map in `.store/config.yaml` defines key-value pairs accessible as `{{ .Vars.key }}` in templates:
 
 ```yaml
+vars:
+  editor: nvim
+  email: user@example.com
+
 stores:
   git:
     target: "~/.config/git"
-    files:
-      - .gitconfig
 ```
+
+```text
+[user]
+    email = {{ .Vars.email }}
+[core]
+    editor = {{ .Vars.editor }}
+```
+
+### Secrets
+
+A secret is an encrypted value stored in `.store/secrets.enc` and rendered using `{{ secret "name" }}`.
 
 ```text
 [github]
     token = {{ secret "github_token" }}
 ```
-
-Usage example:
 
 ```sh
 $ store secret set github_token
@@ -332,11 +362,10 @@ $ store
 
 How it works:
 
-- Template placeholders use `{{ secret "name" }}`.
 - `store` scans the selected store directories and only prompts for a passphrase if rendering is needed.
 - Secrets are stored in `.store/secrets.enc`.
 - Rendered files are written into a local staging directory under `$XDG_STATE_HOME/store/<repo-hash>/` or `~/.local/state/store/<repo-hash>/` if `XDG_STATE_HOME` is unset.
-- Files without secret placeholders are symlinked directly; rendered files are symlinked from the staging directory.
+- Files without template expressions are symlinked directly; rendered files are symlinked from the staging directory.
 
 Relevant details:
 

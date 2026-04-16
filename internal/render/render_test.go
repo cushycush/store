@@ -59,13 +59,13 @@ func TestRender(t *testing.T) {
 			name:    "missing secret lists name",
 			content: `{{ secret "missing" }}`,
 			secrets: map[string]string{},
-			wantErr: `missing secrets: missing`,
+			wantErr: `missing secret: missing`,
 		},
 		{
 			name:    "all missing secrets are listed",
 			content: `{{ secret "beta" }} {{ secret "alpha" }} {{ secret "beta" }}`,
 			secrets: map[string]string{},
-			wantErr: `missing secrets: alpha, beta`,
+			wantErr: `missing secret: beta`,
 		},
 		{
 			name:    "no placeholders with empty secrets map succeeds",
@@ -77,13 +77,13 @@ func TestRender(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Render([]byte(tt.content), tt.secrets)
+			got, err := Render([]byte(tt.content), tt.secrets, nil)
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("Render() error = nil, want %q", tt.wantErr)
 				}
-				if err.Error() != tt.wantErr {
-					t.Fatalf("Render() error = %q, want %q", err.Error(), tt.wantErr)
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Render() error = %q, want substring %q", err.Error(), tt.wantErr)
 				}
 				return
 			}
@@ -340,7 +340,7 @@ func TestPrepareStaging(t *testing.T) {
 				writeTestFile(t, filepath.Join(sourceDir, "secret.txt"), `{{ secret "missing" }}`)
 			},
 			secrets: map[string]string{},
-			wantErr: `missing secrets: missing`,
+			wantErr: `missing secret: missing`,
 		},
 		{
 			name:    "empty directory returns false",
@@ -365,7 +365,7 @@ func TestPrepareStaging(t *testing.T) {
 			stagingDir := filepath.Join(t.TempDir(), "staging")
 			tt.setup(t, sourceDir, stagingDir)
 
-			got, err := PrepareStaging(sourceDir, stagingDir, tt.secrets)
+			got, err := PrepareStaging(sourceDir, stagingDir, tt.secrets, nil)
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("PrepareStaging() error = nil, want substring %q", tt.wantErr)

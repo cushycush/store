@@ -67,7 +67,7 @@ func TestStoreTargetWithSecrets(t *testing.T) {
 		target := filepath.Join(root, "targets", "app")
 		te := config.TargetEntry{Target: target}
 
-		if err := StoreTargetWithSecrets(root, "app", te, map[string]string{"test_key": "secret_value"}); err != nil {
+		if err := StoreTargetWithSecrets(root, "app", te, &RenderContext{Secrets: map[string]string{"test_key": "secret_value"}}); err != nil {
 			t.Fatalf("StoreTargetWithSecrets() error = %v", err)
 		}
 
@@ -90,7 +90,7 @@ func TestStoreTargetWithSecrets(t *testing.T) {
 		te := config.TargetEntry{Target: target}
 		stagedSource := stagingStoreDir(t, root, "app")
 
-		if err := StoreTargetWithSecrets(root, "app", te, map[string]string{"test_key": "secret_value"}); err != nil {
+		if err := StoreTargetWithSecrets(root, "app", te, &RenderContext{Secrets: map[string]string{"test_key": "secret_value"}}); err != nil {
 			t.Fatalf("StoreTargetWithSecrets() error = %v", err)
 		}
 
@@ -114,7 +114,7 @@ func TestStoreTargetWithSecrets(t *testing.T) {
 		te := config.TargetEntry{Target: target, Files: []string{"config.toml", "plain.txt"}}
 		stagedSource := stagingStoreDir(t, root, "app")
 
-		if err := StoreTargetWithSecrets(root, "app", te, map[string]string{"test_key": "secret_value"}); err != nil {
+		if err := StoreTargetWithSecrets(root, "app", te, &RenderContext{Secrets: map[string]string{"test_key": "secret_value"}}); err != nil {
 			t.Fatalf("StoreTargetWithSecrets() error = %v", err)
 		}
 
@@ -148,7 +148,7 @@ func TestStoreTargetWithSecrets(t *testing.T) {
 		target := filepath.Join(root, "targets", "app")
 		te := config.TargetEntry{Target: target}
 
-		err := StoreTargetWithSecrets(root, "app", te, map[string]string{"other_key": "value"})
+		err := StoreTargetWithSecrets(root, "app", te, &RenderContext{Secrets: map[string]string{"other_key": "value"}})
 		if err == nil {
 			t.Fatal("StoreTargetWithSecrets() error = nil, want missing secret error")
 		}
@@ -185,7 +185,7 @@ func TestStoreWithSecrets(t *testing.T) {
 			},
 		}
 
-		if err := StoreWithSecrets(root, "app", entry, map[string]string{"test_key": "secret_value"}); err != nil {
+		if err := StoreWithSecrets(root, "app", entry, &RenderContext{Secrets: map[string]string{"test_key": "secret_value"}}); err != nil {
 			t.Fatalf("StoreWithSecrets() error = %v", err)
 		}
 
@@ -233,7 +233,7 @@ func TestStoreAllWithSecrets(t *testing.T) {
 			"plain":     {Target: filepath.Join(root, "targets", "plain")},
 		}}
 
-		if err := StoreAllWithSecrets(root, cfg, map[string]string{"test_key": "secret_value"}); err != nil {
+		if err := StoreAllWithSecrets(root, cfg, &RenderContext{Secrets: map[string]string{"test_key": "secret_value"}}); err != nil {
 			t.Fatalf("StoreAllWithSecrets() error = %v", err)
 		}
 

@@ -115,17 +115,30 @@ func StoreTarget(root string, name string, te config.TargetEntry) error {
 	return linkTarget(source, name, target, te)
 }
 
+// RenderContext bundles secrets and template data for rendering.
+type RenderContext struct {
+	Secrets      map[string]string
+	TemplateData *render.TemplateData
+}
+
 // resolveSource returns the effective source directory for a store.
-// If secrets are provided and the store contains template files,
+// If a RenderContext is provided and the store contains template files,
 // it prepares a staging directory with rendered files and returns that path.
 // Otherwise returns the original source path in the repo.
-func resolveSource(root, name string, secrets map[string]string) (string, error) {
+func resolveSource(root, name string, rc *RenderContext) (string, error) {
 	sourceDir := filepath.Join(root, name)
-	if len(secrets) == 0 {
+	if rc == nil {
+		rc = &RenderContext{}
+	}
+
+	hasSecrets := len(rc.Secrets) > 0
+	hasTemplateData := rc.TemplateData != nil
+
+	if !hasSecrets && !hasTemplateData {
 		return sourceDir, nil
 	}
 
-	needsRendering, err := render.NeedsRendering(sourceDir)
+	needsRendering, err := render.NeedsTemplateRendering(sourceDir)
 	if err != nil {
 		return "", fmt.Errorf("store %q: check rendering: %w", name, err)
 	}
@@ -139,7 +152,7 @@ func resolveSource(root, name string, secrets map[string]string) (string, error)
 	}
 
 	stagingSource := filepath.Join(stagingBase, name)
-	if _, err := render.PrepareStaging(sourceDir, stagingSource, secrets); err != nil {
+	if _, err := render.PrepareStaging(sourceDir, stagingSource, rc.Secrets, rc.TemplateData); err != nil {
 		return "", fmt.Errorf("store %q: prepare staging: %w", name, err)
 	}
 
@@ -147,8 +160,8 @@ func resolveSource(root, name string, secrets map[string]string) (string, error)
 }
 
 // StoreTargetWithSecrets is like StoreTarget but renders template files before linking.
-func StoreTargetWithSecrets(root string, name string, te config.TargetEntry, secrets map[string]string) error {
-	source, err := resolveSource(root, name, secrets)
+func StoreTargetWithSecrets(root string, name string, te config.TargetEntry, rc *RenderContext) error {
+	source, err := resolveSource(root, name, rc)
 	if err != nil {
 		return err
 	}
@@ -169,9 +182,9 @@ func Store(root string, name string, entry config.StoreEntry) error {
 }
 
 // StoreWithSecrets is like Store but renders template files before linking.
-func StoreWithSecrets(root string, name string, entry config.StoreEntry, secrets map[string]string) error {
+func StoreWithSecrets(root string, name string, entry config.StoreEntry, rc *RenderContext) error {
 	return runStoreTargets(root, name, entry, "link", func(te config.TargetEntry) error {
-		return StoreTargetWithSecrets(root, name, te, secrets)
+		return StoreTargetWithSecrets(root, name, te, rc)
 	}, "store %q: %d target(s) failed")
 }
 
@@ -206,14 +219,14 @@ func StoreAll(root string, cfg *config.Config) error {
 }
 
 // StoreAllWithSecrets is like StoreAll but renders template files before linking.
-func StoreAllWithSecrets(root string, cfg *config.Config, secrets map[string]string) error {
+func StoreAllWithSecrets(root string, cfg *config.Config, rc *RenderContext) error {
 	if len(cfg.Stores) == 0 {
 		return fmt.Errorf("no stores defined in config")
 	}
 
 	var errors []error
 	for name, entry := range cfg.Stores {
-		if err := StoreWithSecrets(root, name, entry, secrets); err != nil {
+		if err := StoreWithSecrets(root, name, entry, rc); err != nil {
 			errors = append(errors, err)
 		} else {
 			for _, te := range entry.ResolvedTargets() {

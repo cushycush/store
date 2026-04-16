@@ -1,6 +1,7 @@
 package render
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -8,50 +9,75 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
+	"text/template"
 )
 
-var secretPattern = regexp.MustCompile(`\{\{\s*secret\s+"([^"]+)"\s*\}\}`)
+// TemplateData provides the dot-accessible fields for templates.
+type TemplateData struct {
+	Hostname string
+	OS       string
+	Arch     string
+	Distro   string
+	Shell    string
+	Vars     map[string]string
+}
 
-var errSecretsFound = fmt.Errorf("render: secrets found")
+var secretPattern = regexp.MustCompile(`\{\{\s*secret\s+"([^"]+)"\s*\}\}`)
+var templatePattern = regexp.MustCompile(`\{\{`)
+
+var errTemplatesFound = fmt.Errorf("render: templates found")
 
 // HasSecrets checks if file content contains any {{ secret "..." }} placeholders.
 func HasSecrets(content []byte) bool {
 	return secretPattern.Match(content)
 }
 
-// Render replaces all {{ secret "name" }} placeholders in content with values from the secrets map.
-// Returns an error if a referenced secret is not found in the map.
-func Render(content []byte, secrets map[string]string) ([]byte, error) {
-	missing := make(map[string]struct{})
+// HasTemplates checks if file content contains any {{ ... }} template syntax.
+func HasTemplates(content []byte) bool {
+	return templatePattern.Match(content)
+}
 
-	rendered := secretPattern.ReplaceAllFunc(content, func(match []byte) []byte {
-		submatches := secretPattern.FindSubmatch(match)
-		if len(submatches) < 2 {
-			return match
-		}
-
-		name := string(submatches[1])
-		value, ok := secrets[name]
-		if !ok {
-			missing[name] = struct{}{}
-			return match
-		}
-
-		return []byte(value)
-	})
-
-	if len(missing) > 0 {
-		names := make([]string, 0, len(missing))
-		for name := range missing {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		return nil, fmt.Errorf("missing secrets: %s", strings.Join(names, ", "))
+// Render replaces all template expressions in content. Supports:
+//   - {{ secret "name" }} — looks up from secrets map
+//   - {{ env "VAR" }} — reads from environment
+//   - {{ .Hostname }}, {{ .OS }}, {{ .Arch }}, {{ .Distro }}, {{ .Shell }} — platform info
+//   - {{ .Vars.key }} — user-defined variables from config
+func Render(content []byte, secrets map[string]string, data *TemplateData) ([]byte, error) {
+	if data == nil {
+		data = &TemplateData{}
 	}
 
-	return rendered, nil
+	funcMap := template.FuncMap{
+		"secret": func(name string) (string, error) {
+			val, ok := secrets[name]
+			if !ok {
+				return "", fmt.Errorf("missing secret: %s", name)
+			}
+			return val, nil
+		},
+		"env": os.Getenv,
+	}
+
+	tmpl, err := template.New("").
+		Option("missingkey=error").
+		Funcs(funcMap).
+		Parse(string(content))
+	if err != nil {
+		return nil, fmt.Errorf("parse template: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return nil, fmt.Errorf("execute template: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// RenderSecrets is a backward-compatible wrapper that only resolves secret placeholders.
+func RenderSecrets(content []byte, secrets map[string]string) ([]byte, error) {
+	return Render(content, secrets, nil)
 }
 
 // SecretNames extracts all secret names referenced in the content.
@@ -86,7 +112,7 @@ func NeedsRendering(dir string) (bool, error) {
 			return err
 		}
 		if HasSecrets(content) {
-			return errSecretsFound
+			return errTemplatesFound
 		}
 
 		return nil
@@ -94,7 +120,36 @@ func NeedsRendering(dir string) (bool, error) {
 	if err == nil {
 		return false, nil
 	}
-	if err == errSecretsFound {
+	if err == errTemplatesFound {
+		return true, nil
+	}
+	return false, err
+}
+
+// NeedsTemplateRendering checks if any file in the directory contains template syntax.
+func NeedsTemplateRendering(dir string) (bool, error) {
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !d.Type().IsRegular() {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if HasTemplates(content) {
+			return errTemplatesFound
+		}
+
+		return nil
+	})
+	if err == nil {
+		return false, nil
+	}
+	if err == errTemplatesFound {
 		return true, nil
 	}
 	return false, err
@@ -121,7 +176,7 @@ func StagingDir(repoRoot string) (string, error) {
 }
 
 // PrepareStaging creates a staging tree for a store directory.
-func PrepareStaging(sourceDir, stagingDir string, secrets map[string]string) (bool, error) {
+func PrepareStaging(sourceDir, stagingDir string, secrets map[string]string, data *TemplateData) (bool, error) {
 	if err := os.RemoveAll(stagingDir); err != nil {
 		return false, fmt.Errorf("remove old staging dir: %w", err)
 	}
@@ -158,8 +213,8 @@ func PrepareStaging(sourceDir, stagingDir string, secrets map[string]string) (bo
 			return fmt.Errorf("read %s: %w", path, err)
 		}
 
-		if HasSecrets(content) {
-			rendered, err := Render(content, secrets)
+		if HasTemplates(content) {
+			rendered, err := Render(content, secrets, data)
 			if err != nil {
 				return fmt.Errorf("render %s: %w", path, err)
 			}
@@ -190,4 +245,43 @@ func CleanStaging(repoRoot string) error {
 		return err
 	}
 	return os.RemoveAll(stagingDir)
+}
+
+// ContentHash returns the SHA-256 hex digest of a file's contents.
+func ContentHash(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:]), nil
+}
+
+// FilesMatch returns true if two files have identical content.
+func FilesMatch(a, b string) (bool, error) {
+	ha, err := ContentHash(a)
+	if err != nil {
+		return false, err
+	}
+	hb, err := ContentHash(b)
+	if err != nil {
+		return false, err
+	}
+	return ha == hb, nil
+}
+
+// FormatPlaceholders returns a human-readable list of template expressions in the content.
+func FormatPlaceholders(content []byte) []string {
+	re := regexp.MustCompile(`\{\{[^}]+\}\}`)
+	matches := re.FindAll(content, -1)
+	seen := make(map[string]bool)
+	var result []string
+	for _, m := range matches {
+		s := strings.TrimSpace(string(m))
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	return result
 }

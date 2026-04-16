@@ -57,11 +57,11 @@ func runAdd(name, target string, files, patterns []string) error {
 		return nil
 	}
 
-	secretMap, err := loadSecretsIfNeeded(root, name)
+	rc, err := buildRenderContext(root, cfg, name)
 	if err != nil {
 		return err
 	}
-	if err := storeWithConflictResolution(root, name, entry, secretMap); err != nil {
+	if err := storeWithConflictResolution(root, name, entry, rc); err != nil {
 		return err
 	}
 
@@ -119,11 +119,11 @@ func runModify(cmd *cobra.Command, name, target string, files, patterns []string
 		return nil
 	}
 
-	secretMap, err := loadSecretsIfNeeded(root, name)
+	rc, err := buildRenderContext(root, cfg, name)
 	if err != nil {
 		return err
 	}
-	if err := storeWithConflictResolution(root, name, entry, secretMap); err != nil {
+	if err := storeWithConflictResolution(root, name, entry, rc); err != nil {
 		return err
 	}
 
@@ -158,13 +158,13 @@ func runStoreAll(cmd *cobra.Command, args []string) error {
 		names = append(names, name)
 	}
 
-	secretMap, err := loadSecretsIfNeeded(root, names...)
+	rc, err := buildRenderContext(root, cfg, names...)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println(ui.Bold("Storing all stores:"))
-	err = storeAllWithConflictResolution(root, cfg, secretMap)
+	err = storeAllWithConflictResolution(root, cfg, rc)
 
 	if err := hooks.RunGlobal(root, "post-store", "link"); err != nil {
 		fmt.Println(ui.Dim(fmt.Sprintf("  warning: %s", err)))
@@ -336,11 +336,11 @@ func runTargetAdd(name, target string, files, patterns []string) error {
 		return err
 	}
 
-	secretMap, err := loadSecretsIfNeeded(root, name)
+	rc, err := buildRenderContext(root, cfg, name)
 	if err != nil {
 		return err
 	}
-	if err := storeTargetWithConflictResolution(root, name, newTarget, secretMap); err != nil {
+	if err := storeTargetWithConflictResolution(root, name, newTarget, rc); err != nil {
 		return err
 	}
 
@@ -462,7 +462,7 @@ func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []
 		return err
 	}
 
-	secretMap, err := loadSecretsIfNeeded(root, name)
+	rc, err := buildRenderContext(root, cfg, name)
 	if err != nil {
 		return err
 	}
@@ -471,7 +471,7 @@ func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []
 		if resolved.Target != target {
 			continue
 		}
-		if err := storeTargetWithConflictResolution(root, name, resolved, secretMap); err != nil {
+		if err := storeTargetWithConflictResolution(root, name, resolved, rc); err != nil {
 			return err
 		}
 		printStoredTarget(name, target, resolved.HasFileMode())
