@@ -53,12 +53,13 @@ S() {
         printf '\n    %s\n' "$(dim "\$ store $*")" >&3
         local tmpout
         tmpout=$(mktemp)
-        "$STORE_BIN" "$@" > "$tmpout" 2>&1
+        FORCE_COLOR=1 "$STORE_BIN" "$@" > "$tmpout" 2>&1
         local rc=$?
         if [[ -s "$tmpout" ]]; then
             sed 's/^/    /' "$tmpout" >&3
         fi
-        cat "$tmpout"
+        # Strip ANSI codes for callers that parse the output.
+        sed $'s/\x1b\\[[0-9;]*m//g' "$tmpout"
         rm -f "$tmpout"
         return $rc
     else
@@ -478,11 +479,13 @@ printf '\n%s\n' "$(bold '=== store completion ===')"
 # ============================================================
 
 for shell in bash zsh fish powershell; do
-    out=$(S completion "$shell" 2>&1)
+    vlog "Generating $shell completion script"
+    out=$("$STORE_BIN" completion "$shell" 2>&1)
     if [[ -n "$out" ]]; then pass "completion $shell generates output"; else fail "completion $shell generates output" "empty"; fi
 done
 
-if S completion invalid >/dev/null 2>&1; then fail "completion rejects invalid shell" "should have failed"; else pass "completion rejects invalid shell"; fi
+vlog "Attempting completion with invalid shell name"
+if "$STORE_BIN" completion invalid >/dev/null 2>&1; then fail "completion rejects invalid shell" "should have failed"; else pass "completion rejects invalid shell"; fi
 
 # ============================================================
 printf '\n%s\n' "$(bold '=== hook environment variables ===')"

@@ -14,6 +14,9 @@ func init() {
 		enabled = false
 		return
 	}
+	if os.Getenv("FORCE_COLOR") != "" {
+		return
+	}
 	if !term.IsTerminal(int(os.Stdout.Fd())) {
 		enabled = false
 	}
