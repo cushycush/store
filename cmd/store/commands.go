@@ -23,6 +23,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.AddCommand(
 		newInitCmd(),
 		newImportCmd(),
+		newAdoptCmd(),
 		newAddCmd(),
 		newModifyCmd(),
 		newRemoveCmd(),
@@ -63,6 +64,39 @@ func newImportCmd() *cobra.Command {
 
 	cmd.Flags().StringArrayVar(&scanDirs, "scan-dir", nil, "directories to scan for symlinks (default: ~, ~/.config, ~/.local/share, ~/.local/bin)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print discovered imports without writing config")
+
+	return cmd
+}
+
+func newAdoptCmd() *cobra.Command {
+	var name string
+	var dryRun bool
+	var files []string
+	var patterns []string
+
+	cmd := &cobra.Command{
+		Use:   "adopt <path>",
+		Short: "Adopt an existing file or directory into the store",
+		Long: `Takes an existing file or directory, moves it into the repo, creates a
+config entry, and symlinks back to the original location.
+
+The store name is derived from the path basename (leading dots stripped).
+Use --name to override the derived name.
+
+Examples:
+  store adopt ~/.config/nvim            # adopts whole directory as "nvim"
+  store adopt ~/.zshrc                  # adopts single file as "zshrc"
+  store adopt ~/.config/nvim --name vim # adopts as "vim" instead of "nvim"`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAdopt(args[0], name, dryRun, files, patterns)
+		},
+	}
+
+	cmd.Flags().StringVarP(&name, "name", "n", "", "override the derived store name")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview what would happen without making changes")
+	cmd.Flags().StringArrayVarP(&files, "files", "f", nil, "only adopt specific files from a directory (repeatable)")
+	cmd.Flags().StringArrayVarP(&patterns, "patterns", "p", nil, "only adopt files matching glob patterns (repeatable)")
 
 	return cmd
 }
