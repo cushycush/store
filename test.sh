@@ -57,6 +57,7 @@ S() {
         local rc=$?
         if [[ -s "$tmpout" ]]; then
             sed 's/^/    /' "$tmpout" >&3
+            printf '\n' >&3
         fi
         # Strip ANSI codes for callers that parse the output.
         sed $'s/\x1b\\[[0-9;]*m//g' "$tmpout"
