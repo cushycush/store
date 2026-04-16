@@ -17,6 +17,7 @@ func TestStatusString(t *testing.T) {
 		{name: "missing", status: StatusMissing, want: "missing"},
 		{name: "conflict", status: StatusConflict, want: "conflict"},
 		{name: "broken", status: StatusBroken, want: "broken"},
+		{name: "drift", status: StatusDrift, want: "drift"},
 		{name: "unknown", status: Status(99), want: "unknown"},
 	}
 
@@ -352,6 +353,89 @@ func TestUnlink(t *testing.T) {
 
 			if tt.after != nil {
 				tt.after(t, root, source, target)
+			}
+		})
+	}
+}
+
+func TestCheckRendered(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, root string) (source, target string)
+		want  Status
+	}{
+		{
+			name: "target missing returns missing",
+			setup: func(t *testing.T, root string) (string, string) {
+				source := mustWriteFile(t, filepath.Join(root, "source.txt"), "hello")
+				target := filepath.Join(root, "target.txt")
+				return source, target
+			},
+			want: StatusMissing,
+		},
+		{
+			name: "target is a symlink returns conflict",
+			setup: func(t *testing.T, root string) (string, string) {
+				source := mustWriteFile(t, filepath.Join(root, "source.txt"), "hello")
+				other := mustWriteFile(t, filepath.Join(root, "other.txt"), "hello")
+				target := filepath.Join(root, "target.txt")
+				mustSymlink(t, other, target)
+				return source, target
+			},
+			want: StatusConflict,
+		},
+		{
+			name: "target is a directory returns conflict",
+			setup: func(t *testing.T, root string) (string, string) {
+				source := mustWriteFile(t, filepath.Join(root, "source.txt"), "hello")
+				target := filepath.Join(root, "targetdir")
+				if err := os.MkdirAll(target, 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q): %v", target, err)
+				}
+				return source, target
+			},
+			want: StatusConflict,
+		},
+		{
+			name: "target content matches source returns linked",
+			setup: func(t *testing.T, root string) (string, string) {
+				source := mustWriteFile(t, filepath.Join(root, "source.txt"), "hello")
+				target := mustWriteFile(t, filepath.Join(root, "target.txt"), "hello")
+				return source, target
+			},
+			want: StatusLinked,
+		},
+		{
+			name: "target content differs from source returns drift",
+			setup: func(t *testing.T, root string) (string, string) {
+				source := mustWriteFile(t, filepath.Join(root, "source.txt"), "hello")
+				target := mustWriteFile(t, filepath.Join(root, "target.txt"), "world")
+				return source, target
+			},
+			want: StatusDrift,
+		},
+		{
+			name: "source missing returns broken",
+			setup: func(t *testing.T, root string) (string, string) {
+				source := filepath.Join(root, "missing-source.txt")
+				target := mustWriteFile(t, filepath.Join(root, "target.txt"), "hello")
+				return source, target
+			},
+			want: StatusBroken,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			source, target := tt.setup(t, root)
+
+			got, err := CheckRendered(source, target)
+			if err != nil {
+				t.Fatalf("CheckRendered(%q, %q) returned error: %v", source, target, err)
+			}
+			if got != tt.want {
+				t.Fatalf("CheckRendered(%q, %q) = %v, want %v", source, target, got, tt.want)
 			}
 		})
 	}

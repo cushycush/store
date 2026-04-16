@@ -20,6 +20,8 @@ const (
 	StatusConflict
 	// StatusBroken means a symlink exists but points to a nonexistent path.
 	StatusBroken
+	// StatusDrift means a rendered file exists at the target but its content differs from the expected source.
+	StatusDrift
 )
 
 func (s Status) String() string {
@@ -32,6 +34,8 @@ func (s Status) String() string {
 		return "conflict"
 	case StatusBroken:
 		return "broken"
+	case StatusDrift:
+		return "drift"
 	default:
 		return "unknown"
 	}
@@ -85,6 +89,45 @@ func Check(source, target string) (Status, error) {
 	}
 
 	return StatusLinked, nil
+}
+
+// CheckRendered examines the target path and returns the status of a rendered
+// (copied) file relative to the source content.
+func CheckRendered(source, target string) (Status, error) {
+	target = filepath.Clean(target)
+
+	fi, err := os.Lstat(target)
+	if os.IsNotExist(err) {
+		return StatusMissing, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to stat %s: %w", target, err)
+	}
+
+	// Symlinks and directories are not rendered files.
+	if fi.Mode()&os.ModeSymlink != 0 || fi.IsDir() {
+		return StatusConflict, nil
+	}
+
+	// Read source content.
+	srcBytes, err := os.ReadFile(source)
+	if os.IsNotExist(err) {
+		return StatusBroken, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to read source %s: %w", source, err)
+	}
+
+	// Read target content.
+	tgtBytes, err := os.ReadFile(target)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read target %s: %w", target, err)
+	}
+
+	if string(srcBytes) == string(tgtBytes) {
+		return StatusLinked, nil
+	}
+	return StatusDrift, nil
 }
 
 // Link creates a symlink at target pointing to source.

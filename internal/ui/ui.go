@@ -54,6 +54,7 @@ func StatusLinked() string   { return Green("[linked]") }
 func StatusMissing() string  { return Cyan("[missing]") }
 func StatusConflict() string { return Red("[conflict]") }
 func StatusBroken() string   { return Yellow("[broken]") }
+func StatusDrift() string    { return Yellow("[drift]") }
 
 func DiffOK() string       { return Green("[ok]") }
 func DiffCreate() string   { return Cyan("[create]") }
