@@ -77,14 +77,15 @@ Example result after running `store`:
 ### Arch Linux (AUR)
 
 ```sh
-# Build from source (recommended)
+# Precompiled binary
+$ yay -S store-bin
+
+# Build from source
 $ yay -S store
 
 # Track latest development
 $ yay -S store-git
 ```
-
-A third-party `store-bin` package also exists on the AUR but may lag behind the latest release.
 
 ### go install
 
