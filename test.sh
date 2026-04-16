@@ -32,28 +32,36 @@ bold()  { printf '\033[1m%s\033[0m' "$*"; }
 pass() { PASS=$((PASS + 1)); printf '  %s %s\n' "$(green '✓')" "$1"; }
 fail() { FAIL=$((FAIL + 1)); printf '  %s %s — %s\n' "$(red '✗')" "$1" "$2"; }
 
+# Save original stdout so verbose output always reaches the terminal,
+# even when callers redirect S() output (e.g. >/dev/null or $(...)).
+exec 3>&1
+
 # Log a verbose message describing what the test is doing.
 vlog() {
     if [[ $VERBOSE -eq 1 ]]; then
-        printf '    %s\n' "$(dim "$*")"
+        printf '    %s\n' "$(dim "$*")" >&3
     fi
 }
 
 is_symlink()    { [[ -L "$1" ]]; }
 not_exists()    { [[ ! -e "$1" ]] && [[ ! -L "$1" ]]; }
 
-# Run a store command; in verbose mode, display the command and its output.
+# Run a store command; in verbose mode, display the command and its output
+# to the terminal (fd 3) while still emitting raw output on stdout for callers.
 S() {
     if [[ $VERBOSE -eq 1 ]]; then
-        printf '    %s\n' "$(dim "\$ store $*")"
-        local out
-        out=$("$STORE_BIN" "$@" 2>&1)
+        printf '    %s\n' "$(dim "\$ store $*")" >&3
+        local tmpout
+        tmpout=$(mktemp)
+        "$STORE_BIN" "$@" > "$tmpout" 2>&1
         local rc=$?
-        if [[ -n "$out" ]]; then
+        if [[ -s "$tmpout" ]]; then
             while IFS= read -r line; do
-                printf '    %s\n' "$(dim "  $line")"
-            done <<< "$out"
+                printf '    %s\n' "$(dim "  $line")" >&3
+            done < "$tmpout"
         fi
+        cat "$tmpout"
+        rm -f "$tmpout"
         return $rc
     else
         "$STORE_BIN" "$@"
