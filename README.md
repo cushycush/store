@@ -74,6 +74,18 @@ Example result after running `store`:
 
 ## Installation
 
+### Arch Linux (AUR)
+
+```sh
+# Build from source (recommended)
+$ yay -S store
+
+# Track latest development
+$ yay -S store-git
+```
+
+A third-party `store-bin` package also exists on the AUR but may lag behind the latest release.
+
 ### go install
 
 ```sh
