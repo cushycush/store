@@ -139,7 +139,7 @@ func resolveSource(root, name string, secrets map[string]string) (string, error)
 	}
 
 	stagingSource := filepath.Join(stagingBase, name)
-	if _, err := render.PrepareStaging(sourceDir, stagingSource, secrets); err != nil {
+	if _, err := render.PrepareStaging(sourceDir, stagingSource, secrets, nil); err != nil {
 		return "", fmt.Errorf("store %q: prepare staging: %w", name, err)
 	}
 
