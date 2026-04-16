@@ -65,3 +65,125 @@ jobs:
             store-*.zip
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+
+  aur:
+    name: Update AUR packages
+    runs-on: ubuntu-latest
+    needs: release
+    if: ${{ !contains(github.ref, 'alpha') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc') }}
+
+    steps:
+      - name: Get version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "TAG=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Set up SSH
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$AUR_SSH_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          echo "Host aur.archlinux.org" >> ~/.ssh/config
+          echo "  IdentityFile ~/.ssh/aur" >> ~/.ssh/config
+          echo "  User aur" >> ~/.ssh/config
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Configure git
+        run: |
+          git config --global user.name "Matthew Cushing"
+          git config --global user.email "cushing.matt@gmail.com"
+
+      - name: Update store
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          TAG: ${{ steps.version.outputs.TAG }}
+        run: |
+          git clone ssh://aur@aur.archlinux.org/store.git /tmp/store-aur
+          cd /tmp/store-aur
+
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+          cat > .SRCINFO <<SRCEOF
+          pkgbase = store
+          	pkgdesc = Dotfile symlink manager — one repo, one config, one command per machine
+          	pkgver = ${VERSION}
+          	pkgrel = 1
+          	url = https://github.com/cushycush/store
+          	arch = x86_64
+          	arch = aarch64
+          	license = MIT
+          	makedepends = go
+          	depends = glibc
+          	conflicts = store-bin
+          	conflicts = store-git
+          	provides = store
+          	source = store-${VERSION}.tar.gz::https://github.com/cushycush/store/archive/v${VERSION}.tar.gz
+          	sha256sums = SKIP
+
+          pkgname = store
+          SRCEOF
+          # .SRCINFO requires leading tabs, not spaces
+          sed -i 's/^          //' .SRCINFO
+
+          git add PKGBUILD .SRCINFO
+          git diff --cached --quiet || { git commit -m "Update to ${TAG}"; git push; }
+
+      - name: Update store-bin
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          TAG: ${{ steps.version.outputs.TAG }}
+        run: |
+          REPO_URL="https://github.com/cushycush/store"
+
+          # Download release assets and compute checksums
+          README_SHA=$(curl -sL "${REPO_URL}/raw/${TAG}/README.md" | sha256sum | cut -d' ' -f1)
+          LICENSE_SHA=$(curl -sL "${REPO_URL}/raw/${TAG}/LICENSE" | sha256sum | cut -d' ' -f1)
+          AMD64_SHA=$(curl -sL "${REPO_URL}/releases/download/${TAG}/store-${TAG}-linux-amd64.zip" | sha256sum | cut -d' ' -f1)
+          ARM64_SHA=$(curl -sL "${REPO_URL}/releases/download/${TAG}/store-${TAG}-linux-arm64.zip" | sha256sum | cut -d' ' -f1)
+
+          git clone ssh://aur@aur.archlinux.org/store-bin.git /tmp/store-bin
+          cd /tmp/store-bin
+
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+          # Update checksums in PKGBUILD
+          sed -i "s/^sha256sums=.*/sha256sums=('${README_SHA}'/" PKGBUILD
+          sed -i "/^sha256sums=/{ n; s/.*/            '${LICENSE_SHA}')/ }" PKGBUILD
+          sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('${AMD64_SHA}')/" PKGBUILD
+          sed -i "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('${ARM64_SHA}')/" PKGBUILD
+
+          cat > .SRCINFO <<SRCEOF
+          pkgbase = store-bin
+          	pkgdesc = Dotfile symlink manager — one repo, one config, one command per machine
+          	pkgver = ${VERSION}
+          	pkgrel = 1
+          	url = https://github.com/cushycush/store
+          	arch = x86_64
+          	arch = aarch64
+          	license = MIT
+          	depends = glibc
+          	conflicts = store
+          	conflicts = store-git
+          	provides = store
+          	source = README-${VERSION}.md::https://raw.githubusercontent.com/cushycush/store/v${VERSION}/README.md
+          	source = LICENSE-${VERSION}::https://raw.githubusercontent.com/cushycush/store/v${VERSION}/LICENSE
+          	sha256sums = ${README_SHA}
+          	sha256sums = ${LICENSE_SHA}
+          	source_x86_64 = store-x86_64-${VERSION}.zip::https://github.com/cushycush/store/releases/download/v${VERSION}/store-v${VERSION}-linux-amd64.zip
+          	sha256sums_x86_64 = ${AMD64_SHA}
+          	source_aarch64 = store-aarch64-${VERSION}.zip::https://github.com/cushycush/store/releases/download/v${VERSION}/store-v${VERSION}-linux-arm64.zip
+          	sha256sums_aarch64 = ${ARM64_SHA}
+
+          pkgname = store-bin
+          SRCEOF
+          sed -i 's/^          //' .SRCINFO
+
+          git add PKGBUILD .SRCINFO
+          git diff --cached --quiet || { git commit -m "Update to ${TAG}"; git push; }
