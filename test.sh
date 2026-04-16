@@ -46,19 +46,17 @@ vlog() {
 is_symlink()    { [[ -L "$1" ]]; }
 not_exists()    { [[ ! -e "$1" ]] && [[ ! -L "$1" ]]; }
 
-# Run a store command; in verbose mode, display the command and its output
-# to the terminal (fd 3) while still emitting raw output on stdout for callers.
+# Run a store command; in verbose mode, show the command and its raw output
+# (preserving store's UI colors) on the terminal via fd 3.
 S() {
     if [[ $VERBOSE -eq 1 ]]; then
-        printf '    %s\n' "$(dim "\$ store $*")" >&3
+        printf '\n    %s\n' "$(dim "\$ store $*")" >&3
         local tmpout
         tmpout=$(mktemp)
         "$STORE_BIN" "$@" > "$tmpout" 2>&1
         local rc=$?
         if [[ -s "$tmpout" ]]; then
-            while IFS= read -r line; do
-                printf '    %s\n' "$(dim "  $line")" >&3
-            done < "$tmpout"
+            sed 's/^/    /' "$tmpout" >&3
         fi
         cat "$tmpout"
         rm -f "$tmpout"
