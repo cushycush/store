@@ -85,7 +85,7 @@ $ go install github.com/cushycush/store/cmd/store@latest
 ```sh
 $ git clone https://github.com/cushycush/store.git
 $ cd store
-$ make build VERSION=1.2.2
+$ make build VERSION=1.3.0
 $ mv store /usr/local/bin/
 ```
 
@@ -817,7 +817,7 @@ $ store --version
 ```
 
 ```text
-store version 1.2.2
+store version 1.3.0
 ```
 
 If built without an injected version, the binary reports `dev`.
