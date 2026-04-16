@@ -274,9 +274,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("store %q not found in config", name)
 		}
 
-		for _, info := range storeops.GetStatus(root, name, entry) {
+		results := storeops.GetStatus(root, name, entry)
+		for _, info := range results {
 			printStatus(info)
 		}
+		printStatusSummary(results)
 		return nil
 	}
 
@@ -286,9 +288,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	for _, info := range storeops.GetStatusAll(root, cfg) {
+	results := storeops.GetStatusAll(root, cfg)
+	for _, info := range results {
 		printStatus(info)
 	}
+	printStatusSummary(results)
 	return nil
 }
 
@@ -505,7 +509,42 @@ func statusIndicator(status linker.Status) string {
 		return ui.StatusConflict() + strings.Repeat(" ", 10-len("[conflict]"))
 	case linker.StatusBroken:
 		return ui.StatusBroken() + strings.Repeat(" ", 10-len("[broken]"))
+	case linker.StatusDrift:
+		return ui.StatusDrift() + strings.Repeat(" ", 10-len("[drift]"))
 	default:
 		return ""
 	}
+}
+
+func printStatusSummary(results []storeops.StatusInfo) {
+	counts := map[linker.Status]int{}
+	var errCount int
+	for _, info := range results {
+		if info.Error != nil {
+			errCount++
+		} else {
+			counts[info.Status]++
+		}
+	}
+
+	parts := []string{
+		fmt.Sprintf("%s linked", ui.Bold(fmt.Sprintf("%d", counts[linker.StatusLinked]))),
+	}
+	if n := counts[linker.StatusMissing]; n > 0 {
+		parts = append(parts, fmt.Sprintf("%s missing", ui.Bold(fmt.Sprintf("%d", n))))
+	}
+	if n := counts[linker.StatusConflict]; n > 0 {
+		parts = append(parts, fmt.Sprintf("%s conflict", ui.Bold(fmt.Sprintf("%d", n))))
+	}
+	if n := counts[linker.StatusBroken]; n > 0 {
+		parts = append(parts, fmt.Sprintf("%s broken", ui.Bold(fmt.Sprintf("%d", n))))
+	}
+	if n := counts[linker.StatusDrift]; n > 0 {
+		parts = append(parts, fmt.Sprintf("%s drift", ui.Bold(fmt.Sprintf("%d", n))))
+	}
+	if errCount > 0 {
+		parts = append(parts, fmt.Sprintf("%s error", ui.Bold(fmt.Sprintf("%d", errCount))))
+	}
+
+	fmt.Printf("\n%s\n", strings.Join(parts, ", "))
 }
