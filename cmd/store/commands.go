@@ -297,18 +297,23 @@ func newTargetAddCmd() *cobra.Command {
 	var patterns []string
 
 	cmd := &cobra.Command{
-		Use:   "add <name>",
+		Use:   "add <name> [target]",
 		Short: "Add a target to a store",
 		Long: `Adds a new target entry to an existing store. If the store currently uses
-the single-target format, it is automatically migrated to the multi-target format.`,
-		Args: cobra.ExactArgs(1),
+the single-target format, it is automatically migrated to the multi-target format.
+
+The target path may be passed positionally or with -t/--target.`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTargetAdd(args[0], target, files, patterns)
+			resolved, err := resolvePositionalTarget(cmd, args, target)
+			if err != nil {
+				return err
+			}
+			return runTargetAdd(args[0], resolved, files, patterns)
 		},
 	}
 
-	cmd.Flags().StringVarP(&target, "target", "t", "", "target path for the symlink (required)")
-	mustMarkFlagRequired(cmd, "target")
+	cmd.Flags().StringVarP(&target, "target", "t", "", "target path for the symlink (or pass positionally)")
 	cmd.Flags().StringArrayVarP(&files, "files", "f", nil, "explicit files to symlink (repeatable)")
 	cmd.Flags().StringArrayVarP(&patterns, "patterns", "p", nil, "glob patterns to match files (repeatable, supports **)")
 	cmd.ValidArgsFunction = completeStoreNames
@@ -320,17 +325,22 @@ func newTargetRemoveCmd() *cobra.Command {
 	var target string
 
 	cmd := &cobra.Command{
-		Use:   "remove <name>",
+		Use:   "remove <name> [target]",
 		Short: "Remove a target from a store",
-		Long:  "Removes a specific target (by path) from a store and unlinks its symlinks.",
-		Args:  cobra.ExactArgs(1),
+		Long: `Removes a specific target (by path) from a store and unlinks its symlinks.
+
+The target path may be passed positionally or with -t/--target.`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTargetRemove(args[0], target)
+			resolved, err := resolvePositionalTarget(cmd, args, target)
+			if err != nil {
+				return err
+			}
+			return runTargetRemove(args[0], resolved)
 		},
 	}
 
-	cmd.Flags().StringVarP(&target, "target", "t", "", "target path to remove (required)")
-	mustMarkFlagRequired(cmd, "target")
+	cmd.Flags().StringVarP(&target, "target", "t", "", "target path to remove (or pass positionally)")
 	cmd.ValidArgsFunction = completeStoreNames
 
 	return cmd
@@ -345,23 +355,26 @@ func newTargetModifyCmd() *cobra.Command {
 	var ops modifyOps
 
 	cmd := &cobra.Command{
-		Use:   "modify <name>",
+		Use:   "modify <name> [target]",
 		Short: "Modify a target within a store",
 		Long: `Modifies the files or patterns for a specific target within a store.
-The target is identified by its path (-t flag).
+The target path may be passed positionally or with -t/--target.
 
 --files and --patterns replace the entire list for that target. --add-file,
 --remove-file, --add-pattern, --remove-pattern apply incremental changes.
 --clear-files and --clear-patterns empty the list entirely. Flags compose
 as clear → replace → add → remove.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTargetModify(cmd, args[0], target, files, patterns, clearFiles, clearPatterns, ops)
+			resolved, err := resolvePositionalTarget(cmd, args, target)
+			if err != nil {
+				return err
+			}
+			return runTargetModify(cmd, args[0], resolved, files, patterns, clearFiles, clearPatterns, ops)
 		},
 	}
 
-	cmd.Flags().StringVarP(&target, "target", "t", "", "target path to modify (required)")
-	mustMarkFlagRequired(cmd, "target")
+	cmd.Flags().StringVarP(&target, "target", "t", "", "target path to modify (or pass positionally)")
 	cmd.Flags().StringArrayVarP(&files, "files", "f", nil, "replace file list (repeatable)")
 	cmd.Flags().StringArrayVarP(&patterns, "patterns", "p", nil, "replace pattern list (repeatable)")
 	cmd.Flags().StringArrayVar(&ops.addFiles, "add-file", nil, "append a file to the file list (repeatable)")
