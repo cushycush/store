@@ -158,13 +158,36 @@ The old symlinks are removed before applying changes.`,
 }
 
 func newRemoveCmd() *cobra.Command {
+	var all bool
+	var yes bool
+
 	cmd := &cobra.Command{
 		Use:   "remove <name>",
 		Short: "Remove a store's symlink",
-		Long:  "Removes the symlink for the named store and deletes its config entry.",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runRemove,
+		Long: `Removes the symlink for the named store and deletes its config entry.
+
+Use --all to remove every configured store at once. --all prompts for
+confirmation unless --yes is passed.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if all {
+				if len(args) > 0 {
+					return fmt.Errorf("--all does not accept a store name")
+				}
+				if !yes && !promptYesNo("Remove ALL configured stores?") {
+					cmd.SilenceUsage = true
+					return fmt.Errorf("aborted")
+				}
+				return runRemoveAll(cmd, args)
+			}
+			if len(args) == 0 {
+				return fmt.Errorf("specify a store name or use --all")
+			}
+			return runRemove(cmd, args)
+		},
 	}
+	cmd.Flags().BoolVar(&all, "all", false, "remove every configured store")
+	cmd.Flags().BoolVar(&yes, "yes", false, "skip confirmation prompt when using --all")
 	cmd.ValidArgsFunction = completeStoreNames
 	return cmd
 }
