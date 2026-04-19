@@ -647,6 +647,51 @@ How it works:
 - Re-links the store after saving the new entry.
 - Refuses to run on multi-target stores; use `store target modify` instead.
 
+### `store list`
+
+Prints a one-line summary of every configured store without touching the filesystem. Useful for scripting or a quick glance.
+
+```sh
+$ store list
+```
+
+```text
+  nvim → ~/.config/nvim
+  shells (3 targets)
+      ~
+      ~/.config/fish
+      ~/.config/nushell
+  git → ~/.config/git
+```
+
+### `store path <name>`
+
+Prints the absolute on-disk path of the store directory inside the repo.
+
+```sh
+$ cd $(store path nvim)
+```
+
+### `store rename <old> <new>`
+
+Moves the store directory, updates the config entry, and re-links all targets under the new name.
+
+```sh
+$ store rename nvim vim
+```
+
+```text
+Renamed store nvim → vim
+```
+
+### `store edit`
+
+Opens `.store/config.yaml` in `$EDITOR` (falls back to `vi`). Does not validate on close — run `store doctor` afterwards to catch syntax or reference errors.
+
+```sh
+$ store edit
+```
+
 ### `store target add <name> [target]`
 
 Adds another target to an existing store. The target path may be passed positionally or via `-t`/`--target`.

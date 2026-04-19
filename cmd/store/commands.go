@@ -30,6 +30,10 @@ func newRootCmd() *cobra.Command {
 		newModifyCmd(),
 		newRemoveCmd(),
 		newRemoveAllCmd(),
+		newListCmd(),
+		newPathCmd(),
+		newRenameCmd(),
+		newEditCmd(),
 		newStatusCmd(),
 		newDiffCmd(),
 		newDoctorCmd(),
@@ -293,6 +297,50 @@ func newVersionCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Printf("%s version %s\n", ui.Bold("store"), ui.Bold(version))
 		},
+	}
+}
+
+func newListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List configured stores",
+		Long:  "Prints a one-line summary of every store in the config, without touching the filesystem.",
+		Args:  cobra.NoArgs,
+		RunE:  runList,
+	}
+}
+
+func newPathCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "path <name>",
+		Short: "Print the on-disk path of a store directory",
+		Long:  "Prints the absolute path to the store directory inside the repo. Useful for scripting: `cd $(store path nvim)`.",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runPath,
+	}
+	cmd.ValidArgsFunction = completeStoreNames
+	return cmd
+}
+
+func newRenameCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "rename <old> <new>",
+		Short: "Rename a store",
+		Long:  "Moves the store directory and updates the config entry. Re-links all targets under the new name.",
+		Args:  cobra.ExactArgs(2),
+		RunE:  runRename,
+	}
+	cmd.ValidArgsFunction = completeStoreNames
+	return cmd
+}
+
+func newEditCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "edit",
+		Short: "Open .store/config.yaml in $EDITOR",
+		Long:  "Opens the config file in $EDITOR (falls back to vi). Does not validate on close — run `store doctor` afterwards.",
+		Args:  cobra.NoArgs,
+		RunE:  runEdit,
 	}
 }
 

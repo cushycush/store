@@ -189,6 +189,26 @@ out=$(S status nvim 2>&1)
 if [[ "$out" == *"linked"* ]]; then pass "status shows linked indicator"; else fail "status shows linked indicator" "got: $out"; fi
 
 # ============================================================
+printf '\n%s\n' "$(bold '=== store list / path ===')"
+# ============================================================
+
+out=$(S list 2>&1)
+if [[ "$out" == *"nvim"* ]] && [[ "$out" == *"shells"* ]] && [[ "$out" == *"configs"* ]]; then
+    pass "list shows configured stores"
+else
+    fail "list shows configured stores" "got: $out"
+fi
+
+out=$(S path nvim 2>&1)
+if [[ "$out" == *"/nvim" ]]; then pass "path prints absolute store directory"; else fail "path prints absolute store directory" "got: $out"; fi
+
+if S path missing >/dev/null 2>&1; then
+    fail "path errors for unknown store" "should have failed"
+else
+    pass "path errors for unknown store"
+fi
+
+# ============================================================
 printf '\n%s\n' "$(bold '=== store diff ===')"
 # ============================================================
 

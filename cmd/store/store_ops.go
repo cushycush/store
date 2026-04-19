@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/cushycush/store/internal/config"
@@ -14,6 +16,116 @@ import (
 	"github.com/cushycush/store/internal/ui"
 	"github.com/spf13/cobra"
 )
+
+func runList(cmd *cobra.Command, args []string) error {
+	_ = cmd
+	_ = args
+	_, cfg, err := findRootAndConfig()
+	if err != nil {
+		return err
+	}
+	if len(cfg.Stores) == 0 {
+		fmt.Println(ui.Dim("No stores defined in config."))
+		return nil
+	}
+	names := make([]string, 0, len(cfg.Stores))
+	for name := range cfg.Stores {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		entry := cfg.Stores[name]
+		targets := entry.ResolvedTargets()
+		switch len(targets) {
+		case 0:
+			fmt.Printf("  %s %s\n", ui.StoreName(name), ui.Dim("(no target)"))
+		case 1:
+			fmt.Printf("  %s %s %s\n", ui.StoreName(name), ui.Arrow(), ui.TargetPath(targets[0].Target))
+		default:
+			fmt.Printf("  %s %s\n", ui.StoreName(name), ui.Dim(fmt.Sprintf("(%d targets)", len(targets))))
+			for _, t := range targets {
+				fmt.Printf("      %s\n", ui.TargetPath(t.Target))
+			}
+		}
+	}
+	return nil
+}
+
+func runPath(cmd *cobra.Command, args []string) error {
+	_ = cmd
+	name := args[0]
+	root, cfg, err := findRootAndConfig()
+	if err != nil {
+		return err
+	}
+	if _, ok := cfg.Stores[name]; !ok {
+		return fmt.Errorf("store %q not found in config", name)
+	}
+	fmt.Println(filepath.Join(root, name))
+	return nil
+}
+
+func runRename(cmd *cobra.Command, args []string) error {
+	_ = cmd
+	oldName, newName := args[0], args[1]
+	if oldName == newName {
+		return fmt.Errorf("old and new names are identical")
+	}
+	root, cfg, err := findRootAndConfig()
+	if err != nil {
+		return err
+	}
+	entry, ok := cfg.Stores[oldName]
+	if !ok {
+		return fmt.Errorf("store %q not found in config", oldName)
+	}
+	if _, clash := cfg.Stores[newName]; clash {
+		return fmt.Errorf("store %q already exists", newName)
+	}
+	if err := storeops.StoreRemove(root, oldName, entry); err != nil {
+		fmt.Println(ui.Dim(fmt.Sprintf("  warning: failed to remove old symlinks: %s", err)))
+	}
+	oldPath := filepath.Join(root, oldName)
+	newPath := filepath.Join(root, newName)
+	if _, statErr := os.Stat(oldPath); statErr == nil {
+		if err := os.Rename(oldPath, newPath); err != nil {
+			return fmt.Errorf("failed to rename store directory: %w", err)
+		}
+	}
+	delete(cfg.Stores, oldName)
+	cfg.Stores[newName] = entry
+	if err := config.Save(root, cfg); err != nil {
+		return err
+	}
+	rc, err := buildRenderContext(root, cfg, newName)
+	if err != nil {
+		return err
+	}
+	if err := storeWithConflictResolution(root, newName, entry, rc); err != nil {
+		return err
+	}
+	fmt.Printf("%s store %s %s %s\n", ui.Green("Renamed"), ui.StoreName(oldName), ui.Arrow(), ui.StoreName(newName))
+	return nil
+}
+
+func runEdit(cmd *cobra.Command, args []string) error {
+	_ = cmd
+	_ = args
+	root, _, err := findRootAndConfig()
+	if err != nil {
+		return err
+	}
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi"
+	}
+	configPath := filepath.Join(root, config.ConfigDir, config.ConfigFile)
+	proc := exec.Command(editor, configPath)
+	proc.Stdin = os.Stdin
+	proc.Stdout = os.Stdout
+	proc.Stderr = os.Stderr
+	return proc.Run()
+}
 
 func runAdd(name, target string, files, patterns []string) error {
 	root, cfg, err := findRootAndConfig()
