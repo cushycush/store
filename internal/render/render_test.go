@@ -35,6 +35,30 @@ func TestHasSecrets(t *testing.T) {
 	}
 }
 
+func TestIsBinary(t *testing.T) {
+	tests := []struct {
+		name    string
+		content []byte
+		want    bool
+	}{
+		{name: "plain text", content: []byte("hello world"), want: false},
+		{name: "utf-8 text", content: []byte("héllo 世界"), want: false},
+		{name: "template syntax", content: []byte(`{{ secret "x" }}`), want: false},
+		{name: "contains NUL byte", content: []byte("abc\x00def"), want: true},
+		{name: "PNG-like header", content: []byte("\x89PNG\r\n\x1a\n{{IHDR"), want: true},
+		{name: "invalid utf-8", content: []byte{0xff, 0xfe, 0xfd}, want: true},
+		{name: "empty content", content: []byte{}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsBinary(tt.content); got != tt.want {
+				t.Fatalf("IsBinary() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRender(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -146,6 +170,13 @@ func TestNeedsRendering(t *testing.T) {
 				writeTestFile(t, filepath.Join(dir, "nested", "deep", "secret.txt"), `{{secret "nested"}}`)
 			},
 			want: true,
+		},
+		{
+			name: "ignores binary files that contain template bytes",
+			setup: func(t *testing.T, dir string) {
+				writeTestFile(t, filepath.Join(dir, "image.png"), "\x89PNG\r\n\x1a\n{{ secret \"x\" }}")
+			},
+			want: false,
 		},
 		{
 			name: "skips directories themselves",
@@ -341,6 +372,17 @@ func TestPrepareStaging(t *testing.T) {
 			},
 			secrets: map[string]string{},
 			wantErr: `missing secret: missing`,
+		},
+		{
+			name: "binary files with template-looking bytes are symlinked, not rendered",
+			setup: func(t *testing.T, sourceDir, stagingDir string) {
+				writeTestFile(t, filepath.Join(sourceDir, "image.png"), "\x89PNG\r\n\x1a\n{{IHDR\x00payload")
+			},
+			secrets: map[string]string{},
+			want:    false,
+			assertion: func(t *testing.T, sourceDir, stagingDir string) {
+				assertSymlinkTarget(t, filepath.Join(stagingDir, "image.png"), filepath.Join(sourceDir, "image.png"))
+			},
 		},
 		{
 			name:    "empty directory returns false",

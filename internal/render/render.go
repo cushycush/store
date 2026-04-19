@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"text/template"
+	"unicode/utf8"
 )
 
 // TemplateData provides the dot-accessible fields for templates.
@@ -36,6 +37,16 @@ func HasSecrets(content []byte) bool {
 // HasTemplates checks if file content contains any {{ ... }} template syntax.
 func HasTemplates(content []byte) bool {
 	return templatePattern.Match(content)
+}
+
+// IsBinary reports whether content looks like binary data unsuitable for
+// template rendering. Go's text/template requires valid UTF-8 input and
+// binary files that happen to contain the bytes `{{` will crash the parser.
+func IsBinary(content []byte) bool {
+	if bytes.IndexByte(content, 0) >= 0 {
+		return true
+	}
+	return !utf8.Valid(content)
 }
 
 // Render replaces all template expressions in content. Supports:
@@ -111,7 +122,7 @@ func NeedsRendering(dir string) (bool, error) {
 		if err != nil {
 			return err
 		}
-		if HasSecrets(content) {
+		if !IsBinary(content) && HasSecrets(content) {
 			return errTemplatesFound
 		}
 
@@ -140,7 +151,7 @@ func NeedsTemplateRendering(dir string) (bool, error) {
 		if err != nil {
 			return err
 		}
-		if HasTemplates(content) {
+		if !IsBinary(content) && HasTemplates(content) {
 			return errTemplatesFound
 		}
 
@@ -213,7 +224,7 @@ func PrepareStaging(sourceDir, stagingDir string, secrets map[string]string, dat
 			return fmt.Errorf("read %s: %w", path, err)
 		}
 
-		if HasTemplates(content) {
+		if !IsBinary(content) && HasTemplates(content) {
 			rendered, err := Render(content, secrets, data)
 			if err != nil {
 				return fmt.Errorf("render %s: %w", path, err)

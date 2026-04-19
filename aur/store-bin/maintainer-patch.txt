@@ -1,0 +1,12 @@
+Replace the first line of the PKGBUILD:
+
+OLD: # Maintainer: Rafael Dominiquini <rafaeldominiquini at gmail dot com>
+NEW: # Maintainer: Matthew Cushing <cushing.matt at gmail dot com>
+     # Contributor: Rafael Dominiquini <rafaeldominiquini at gmail dot com>
+
+Then regenerate .SRCINFO and push:
+
+  makepkg --printsrcinfo > .SRCINFO
+  git add PKGBUILD .SRCINFO
+  git commit -m "Update maintainer after ownership transfer"
+  git push origin master
