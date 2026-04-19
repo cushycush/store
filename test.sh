@@ -257,7 +257,7 @@ else
 fi
 
 # ============================================================
-printf '\n%s\n' "$(bold '=== store (restore all) ===')"
+printf '\n%s\n' "$(bold '=== store apply ===')"
 # ============================================================
 
 TARGET_GIT="$TMPDIR_ROOT/targets/git"
@@ -269,7 +269,7 @@ S add git -t "$TARGET_GIT" >/dev/null 2>&1
 
 rm -f "$TARGET_NVIM" "$TARGET_GIT"
 
-S >/dev/null 2>&1
+S apply >/dev/null 2>&1
 if is_symlink "$TARGET_NVIM" && is_symlink "$TARGET_GIT"; then
     pass "store restores all symlinks"
 else
@@ -277,7 +277,7 @@ else
 fi
 
 rm -f "$TARGET_NVIM" "$TARGET_GIT"
-S --only nvim >/dev/null 2>&1
+S apply --only nvim >/dev/null 2>&1
 if is_symlink "$TARGET_NVIM" && ! is_symlink "$TARGET_GIT" 2>/dev/null; then
     pass "store --only restores only named stores"
 else
@@ -344,7 +344,7 @@ echo "test" > "$REPO/plattest/file.txt"
 
 printf '    plattest:\n        target: %s\n        when:\n            os: impossibleos\n' "$TARGET_PLAT" >> .store/config.yaml
 
-S >/dev/null 2>&1
+S apply >/dev/null 2>&1
 if not_exists "$TARGET_PLAT"; then pass "store with non-matching when clause is skipped"; else fail "store with non-matching when clause is skipped" "should have been skipped"; fi
 
 out=$(S status 2>&1)
@@ -382,7 +382,7 @@ stores:
         ignore:
             - "*.bak"
 YAMLEOF
-S >/dev/null 2>&1
+S apply >/dev/null 2>&1
 if [[ -f "${TARGET_IGN}2/good.txt" ]] && [[ ! -e "${TARGET_IGN}2/bad.bak" ]]; then
     pass "explicit ignore pattern excludes matching files"
 else
@@ -400,7 +400,7 @@ echo "data" > "$REPO/hooked/file.txt"
 
 printf '    hooked:\n        target: %s\n        hooks:\n            post: "echo hook_ran > %s"\n' "$TARGET_HOOKS" "$HOOK_LOG" >> .store/config.yaml
 
-S --only hooked >/dev/null 2>&1
+S apply --only hooked >/dev/null 2>&1
 if [[ -f "$HOOK_LOG" ]] && grep -q "hook_ran" "$HOOK_LOG"; then
     pass "per-store post hook runs after linking"
 else
@@ -416,7 +416,7 @@ HOOKEOF
 chmod +x .store/hooks/pre-store
 
 rm -f "$TARGET_HOOKS"
-S --only hooked >/dev/null 2>&1
+S apply --only hooked >/dev/null 2>&1
 if [[ -f "$GLOBAL_LOG" ]] && grep -q "global_pre" "$GLOBAL_LOG"; then
     pass "global pre-store hook runs"
 else
@@ -500,7 +500,7 @@ TARGET_ENV="$TMPDIR_ROOT/targets/envtest"
 cd "$REPO"
 printf '    envtest:\n        target: %s\n        hooks:\n            post: "env > %s"\n' "$TARGET_ENV" "$ENV_LOG" >> .store/config.yaml
 
-S --only envtest >/dev/null 2>&1
+S apply --only envtest >/dev/null 2>&1
 if grep -q "STORE_OS=" "$ENV_LOG" \
    && grep -q "STORE_ARCH=" "$ENV_LOG" \
    && grep -q "STORE_HOSTNAME=" "$ENV_LOG" \

@@ -12,15 +12,17 @@ func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:     "store",
 		Short:   "A simpler alternative to GNU stow",
-		Long:    "store manages symlinks for your dotfiles without requiring mirrored directory structures.",
+		Long:    "store manages symlinks for your dotfiles without requiring mirrored directory structures.\n\nRun `store apply` to reconcile symlinks from .store/config.yaml.",
 		Version: version,
-		RunE:    runStoreAll,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
 	}
 
 	rootCmd.PersistentFlags().BoolVar(&forceBackups, "force", false, "create .bak backups without prompting")
-	rootCmd.Flags().StringArrayVar(&onlyStores, "only", nil, "only store specific entries by name (repeatable)")
 
 	rootCmd.AddCommand(
+		newApplyCmd(),
 		newInitCmd(),
 		newImportCmd(),
 		newAdoptCmd(),
@@ -38,6 +40,19 @@ func newRootCmd() *cobra.Command {
 	)
 
 	return rootCmd
+}
+
+func newApplyCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "apply",
+		Short: "Apply all configured stores",
+		Long: `Reconcile symlinks for all configured stores: create missing links,
+replace broken ones, and report conflicts. Run this after cloning a dotfiles
+repo on a new machine, or after changing .store/config.yaml.`,
+		RunE: runStoreAll,
+	}
+	cmd.Flags().StringArrayVar(&onlyStores, "only", nil, "apply only the named stores (repeatable)")
+	return cmd
 }
 
 func newInitCmd() *cobra.Command {

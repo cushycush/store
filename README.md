@@ -151,10 +151,10 @@ $ git push
 ```sh
 $ git clone https://github.com/you/dotfiles.git ~/dotfiles
 $ cd ~/dotfiles
-$ store
+$ store apply
 ```
 
-If target files already exist, `store` detects the conflict, offers to move those files into the repo, and then creates the symlinks.
+If target files already exist, `store apply` detects the conflict, offers to move those files into the repo, and then creates the symlinks.
 
 ## Concepts
 
@@ -174,7 +174,7 @@ Six ideas to keep in mind before you read the command reference. The rest of the
 
 - **Single-target vs multi-target.** Use `target:` when a store goes to one place. Use `targets:` when one store's files fan out to several locations — for example, `shells` with `.zshrc` landing in `~`, `config.fish` in `~/.config/fish`, and `config.nu` in `~/.config/nushell`. You can switch between the two forms at any time; `store target add` and `store target remove` migrate automatically.
 
-- **The config is the source of truth.** `.store/config.yaml` fully describes the symlink state you want on a machine. Running `store` reconciles the filesystem to match — it creates missing links, replaces broken ones, and leaves correct ones alone. Changing the config and running `store` again is the entire update loop.
+- **The config is the source of truth.** `.store/config.yaml` fully describes the symlink state you want on a machine. Running `store apply` reconciles the filesystem to match — it creates missing links, replaces broken ones, and leaves correct ones alone. Changing the config and running `store apply` again is the entire update loop.
 
 - **Conflict handling.** If a target path already exists as a real file or directory (not a `store`-managed symlink), `store` stops before linking and offers to move the existing content into the repo and then symlink back. Nothing gets overwritten silently.
 
@@ -377,7 +377,7 @@ A secret is an encrypted value stored in `.store/secrets.enc` and rendered using
 
 ```sh
 $ store secret set github_token
-$ store
+$ store apply
 ```
 
 How it works:
@@ -429,7 +429,7 @@ How it works:
 Relevant details:
 
 - Detected values include OS, arch, distro, distro version, hostname, shell, and WSL state.
-- Commands that operate on the configured set, such as `store`, `store diff`, and `store status`, skip non-matching stores.
+- Commands that operate on the configured set, such as `store apply`, `store diff`, and `store status`, skip non-matching stores.
 - `store doctor` reports skipped stores as informational issues so you can confirm the filter is doing what you expect.
 
 ## Ignoring Files
@@ -474,9 +474,11 @@ Relevant details:
 
 Reference for every subcommand. For a task-oriented tour, see [Quick Start](#quick-start) and [Concepts](#concepts). Run `store --help` for the live CLI tree.
 
-### `store`
+### `store apply`
 
-Applies all configured stores. This is the default command you run after cloning a dotfiles repo on a new machine.
+Reconciles all configured stores: creates missing symlinks, replaces broken ones, and reports conflicts. Run this after cloning a dotfiles repo on a new machine or after editing `.store/config.yaml`.
+
+Running `store` with no arguments prints help; `store apply` is the explicit verb that performs the reconciliation.
 
 | Flag      | Description                              |
 | --------- | ---------------------------------------- |
@@ -484,12 +486,12 @@ Applies all configured stores. This is the default command you run after cloning
 | `--force` | Create `.bak` backups without prompting  |
 
 ```sh
-$ store --only nvim --only git
-$ store --force
+$ store apply --only nvim --only git
+$ store apply --force
 ```
 
 ```text
-$ store
+$ store apply
 Storing all stores:
   nvim -> ~/.config/nvim
   shells -> ~ (files)
@@ -758,7 +760,7 @@ How it works:
 
 ### `store diff`
 
-Previews what `store` would do without changing anything.
+Previews what `store apply` would do without changing anything.
 
 | Flag     | Description                                |
 | -------- | ------------------------------------------ |
@@ -781,7 +783,7 @@ Summary: 2 ok, 1 to create, 1 conflict, 0 to replace
 
 How it works:
 
-- Uses the same platform filtering as `store`.
+- Uses the same platform filtering as `store apply`.
 - Reports current targets as `ok`, `create`, `conflict`, `replace`, or `error`.
 - `replace` means a broken symlink would be removed and recreated.
 
@@ -981,7 +983,7 @@ If files already exist inside the store where moved content would land, `store` 
 
 ### `store diff` shows `replace`
 
-`replace` means the target is currently a broken symlink. Running `store` will remove it and recreate it correctly.
+`replace` means the target is currently a broken symlink. Running `store apply` will remove it and recreate it correctly.
 
 ### `store doctor` warns about secrets
 
