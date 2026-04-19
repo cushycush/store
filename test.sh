@@ -240,21 +240,21 @@ TARGET_NU="$TMPDIR_ROOT/targets/nu"
 mkdir -p "$TARGET_FISH" "$TARGET_NU"
 echo 'set nu' > "$REPO/shells/config.nu"
 
-vlog "Adding fish target to shells store"
-S target add shells -t "$TARGET_FISH" -f config.fish >/dev/null 2>&1
-if is_symlink "$TARGET_FISH/config.fish"; then pass "target add creates multi-target store"; else fail "target add creates multi-target store" "not linked"; fi
+vlog "Adding fish target to shells store (positional form)"
+S target add shells "$TARGET_FISH" -f config.fish >/dev/null 2>&1
+if is_symlink "$TARGET_FISH/config.fish"; then pass "target add accepts positional target"; else fail "target add accepts positional target" "not linked"; fi
 
-vlog "Adding nu target to shells store"
+vlog "Adding nu target to shells store (flag form)"
 S target add shells -t "$TARGET_NU" -f config.nu >/dev/null 2>&1
-if is_symlink "$TARGET_NU/config.nu"; then pass "target add second target"; else fail "target add second target" "not linked"; fi
+if is_symlink "$TARGET_NU/config.nu"; then pass "target add second target via -t flag"; else fail "target add second target via -t flag" "not linked"; fi
 
-vlog "Modifying fish target files"
-S target modify shells -t "$TARGET_FISH" -f config.fish >/dev/null 2>&1
-if is_symlink "$TARGET_FISH/config.fish"; then pass "target modify updates files"; else fail "target modify updates files" "failed"; fi
+vlog "Modifying fish target files (positional form)"
+S target modify shells "$TARGET_FISH" -f config.fish >/dev/null 2>&1
+if is_symlink "$TARGET_FISH/config.fish"; then pass "target modify accepts positional target"; else fail "target modify accepts positional target" "failed"; fi
 
-vlog "Removing nu target from shells store"
-S target remove shells -t "$TARGET_NU" >/dev/null 2>&1
-if not_exists "$TARGET_NU/config.nu"; then pass "target remove unlinks and removes target"; else fail "target remove unlinks and removes target" "symlink still exists"; fi
+vlog "Removing nu target from shells store (positional form)"
+S target remove shells "$TARGET_NU" >/dev/null 2>&1
+if not_exists "$TARGET_NU/config.nu"; then pass "target remove accepts positional target"; else fail "target remove accepts positional target" "symlink still exists"; fi
 
 # ============================================================
 printf '\n%s\n' "$(bold '=== store remove ===')"

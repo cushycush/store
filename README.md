@@ -646,18 +646,18 @@ How it works:
 - Re-links the store after saving the new entry.
 - Refuses to run on multi-target stores; use `store target modify` instead.
 
-### `store target add <name>`
+### `store target add <name> [target]`
 
-Adds another target to an existing store.
+Adds another target to an existing store. The target path may be passed positionally or via `-t`/`--target`.
 
 | Flag         | Short | Description                                             |
 | ------------ | ----- | ------------------------------------------------------- |
-| `--target`   | `-t`  | Target path to add; required                            |
+| `--target`   | `-t`  | Target path (or pass positionally)                      |
 | `--files`    | `-f`  | Explicit files to link individually; repeatable         |
 | `--patterns` | `-p`  | Glob patterns to match files; repeatable; supports `**` |
 
 ```sh
-$ store target add shells -t ~/.config/fish -f config.fish
+$ store target add shells ~/.config/fish -f config.fish
 $ store target add shells -t ~/.config/nushell -p "*.nu"
 ```
 
@@ -665,17 +665,18 @@ How it works:
 
 - Automatically migrates a single-target store to the `targets:` format.
 - Rejects duplicate target paths after normalizing `~` and absolute paths.
+- Passing both a positional target and `--target` is an error; pick one.
 
-### `store target remove <name>`
+### `store target remove <name> [target]`
 
 Removes one target from a store and unlinks that target's symlinks.
 
-| Flag       | Short | Description                     |
-| ---------- | ----- | ------------------------------- |
-| `--target` | `-t`  | Target path to remove; required |
+| Flag       | Short | Description                        |
+| ---------- | ----- | ---------------------------------- |
+| `--target` | `-t`  | Target path (or pass positionally) |
 
 ```sh
-$ store target remove shells -t ~/.config/fish
+$ store target remove shells ~/.config/fish
 ```
 
 ```text
@@ -688,13 +689,13 @@ How it works:
 - Unlinks that target.
 - Migrates the store back to single-target format automatically if one target remains.
 
-### `store target modify <name>`
+### `store target modify <name> [target]`
 
 Updates the `files` or `patterns` for one target inside a multi-target store. Supports the same wholesale and incremental flags as `store modify`.
 
 | Flag               | Short | Description                                                |
 | ------------------ | ----- | ---------------------------------------------------------- |
-| `--target`         | `-t`  | Target path to modify; required                            |
+| `--target`         | `-t`  | Target path (or pass positionally)                         |
 | `--files`          | `-f`  | Replace the file list; repeatable                          |
 | `--patterns`       | `-p`  | Replace the pattern list; repeatable                       |
 | `--add-file`       |       | Append a file to the file list; repeatable                 |
@@ -705,9 +706,9 @@ Updates the `files` or `patterns` for one target inside a multi-target store. Su
 | `--clear-patterns` |       | Remove all patterns from the target                        |
 
 ```sh
-$ store target modify shells -t ~ -f .zshrc -f .bashrc -f .zprofile
-$ store target modify shells -t ~ --add-file .zprofile
-$ store target modify shells -t ~/.config/nushell --clear-files -p "*.nu"
+$ store target modify shells ~ -f .zshrc -f .bashrc -f .zprofile
+$ store target modify shells ~ --add-file .zprofile
+$ store target modify shells ~/.config/nushell --clear-files -p "*.nu"
 ```
 
 How it works:

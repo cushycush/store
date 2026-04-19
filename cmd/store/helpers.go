@@ -54,6 +54,25 @@ func applyListOps(list, add, remove []string) []string {
 	return filtered
 }
 
+// resolvePositionalTarget returns the target path from args[1] or --target,
+// erroring if both or neither are supplied. Used by target add/remove/modify.
+func resolvePositionalTarget(cmd *cobra.Command, args []string, flagValue string) (string, error) {
+	positional := ""
+	if len(args) >= 2 {
+		positional = args[1]
+	}
+	if positional != "" && cmd.Flags().Changed("target") {
+		return "", fmt.Errorf("target given both as positional argument and via --target; pick one")
+	}
+	if positional != "" {
+		return positional, nil
+	}
+	if flagValue == "" {
+		return "", fmt.Errorf("target required (positional argument or --target flag)")
+	}
+	return flagValue, nil
+}
+
 func findRootAndConfig() (string, *config.Config, error) {
 	root, err := config.FindRoot()
 	if err != nil {
