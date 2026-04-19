@@ -338,10 +338,11 @@ func newSecretCmd() *cobra.Command {
 			RunE:  runSecretGet,
 		},
 		&cobra.Command{
-			Use:   "rm <name>",
-			Short: "Remove a secret",
-			Args:  cobra.ExactArgs(1),
-			RunE:  runSecretRemove,
+			Use:     "remove <name>",
+			Aliases: []string{"rm"},
+			Short:   "Remove a secret",
+			Args:    cobra.ExactArgs(1),
+			RunE:    runSecretRemove,
 		},
 		&cobra.Command{
 			Use:   "list",
