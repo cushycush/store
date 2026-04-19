@@ -122,7 +122,7 @@ func NeedsRendering(dir string) (bool, error) {
 		if err != nil {
 			return err
 		}
-		if HasSecrets(content) {
+		if !IsBinary(content) && HasSecrets(content) {
 			return errTemplatesFound
 		}
 
