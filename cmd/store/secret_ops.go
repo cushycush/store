@@ -21,6 +21,7 @@ func runSecretSet(cmd *cobra.Command, args []string) error {
 	value := ""
 	if len(args) == 2 {
 		value = args[1]
+		fmt.Fprintln(cmd.ErrOrStderr(), ui.Dim("  warning: passing a secret value as an argument may be logged by your shell history; prefer interactive input"))
 	} else {
 		value, err = promptHiddenValue("Enter secret value: ", "failed to read secret value")
 		if err != nil {
