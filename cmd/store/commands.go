@@ -21,6 +21,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.Flags().StringArrayVar(&onlyStores, "only", nil, "only store specific entries by name (repeatable)")
 
 	rootCmd.AddCommand(
+		newApplyCmd(),
 		newInitCmd(),
 		newImportCmd(),
 		newAdoptCmd(),
@@ -38,6 +39,19 @@ func newRootCmd() *cobra.Command {
 	)
 
 	return rootCmd
+}
+
+func newApplyCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "apply",
+		Short: "Apply all configured stores",
+		Long: `Reconcile symlinks for all configured stores: create missing links,
+replace broken ones, and report conflicts. Run this after cloning a dotfiles
+repo on a new machine, or after changing .store/config.yaml.`,
+		RunE: runStoreAll,
+	}
+	cmd.Flags().StringArrayVar(&onlyStores, "only", nil, "apply only the named stores (repeatable)")
+	return cmd
 }
 
 func newInitCmd() *cobra.Command {
