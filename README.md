@@ -631,6 +631,7 @@ Updates an existing single-target store. Choose between wholesale replacement, i
 | `--remove-pattern` |       | Remove a pattern from the pattern list; repeatable         |
 | `--clear-files`    |       | Remove all files from the entry                            |
 | `--clear-patterns` |       | Remove all patterns from the entry                         |
+| `--dry-run`        |       | Preview without applying changes                           |
 
 ```sh
 $ store modify nvim -t ~/.config/nvim-custom
@@ -655,6 +656,7 @@ Adds another target to an existing store. The target path may be passed position
 | `--target`   | `-t`  | Target path (or pass positionally)                      |
 | `--files`    | `-f`  | Explicit files to link individually; repeatable         |
 | `--patterns` | `-p`  | Glob patterns to match files; repeatable; supports `**` |
+| `--dry-run`  |       | Preview without applying changes                        |
 
 ```sh
 $ store target add shells ~/.config/fish -f config.fish
@@ -671,9 +673,10 @@ How it works:
 
 Removes one target from a store and unlinks that target's symlinks.
 
-| Flag       | Short | Description                        |
-| ---------- | ----- | ---------------------------------- |
-| `--target` | `-t`  | Target path (or pass positionally) |
+| Flag        | Short | Description                        |
+| ----------- | ----- | ---------------------------------- |
+| `--target`  | `-t`  | Target path (or pass positionally) |
+| `--dry-run` |       | Preview without applying changes   |
 
 ```sh
 $ store target remove shells ~/.config/fish
@@ -704,6 +707,7 @@ Updates the `files` or `patterns` for one target inside a multi-target store. Su
 | `--remove-pattern` |       | Remove a pattern from the pattern list; repeatable         |
 | `--clear-files`    |       | Remove all files from the target                           |
 | `--clear-patterns` |       | Remove all patterns from the target                        |
+| `--dry-run`        |       | Preview without applying changes                           |
 
 ```sh
 $ store target modify shells ~ -f .zshrc -f .bashrc -f .zprofile
@@ -721,13 +725,15 @@ How it works:
 
 Removes the store's symlinked targets and deletes the store entry from config. With `--all`, removes every configured store.
 
-| Flag     | Description                                                       |
-| -------- | ----------------------------------------------------------------- |
-| `--all`  | Remove every configured store                                     |
-| `--yes`  | Skip the confirmation prompt when using `--all`                   |
+| Flag        | Description                                                       |
+| ----------- | ----------------------------------------------------------------- |
+| `--all`     | Remove every configured store                                     |
+| `--yes`     | Skip the confirmation prompt when using `--all`                   |
+| `--dry-run` | Preview without applying changes                                  |
 
 ```sh
 $ store remove nvim
+$ store remove nvim --dry-run
 $ store remove --all
 $ store remove --all --yes
 ```
