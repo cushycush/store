@@ -219,6 +219,105 @@ func previewRemoveAll() error {
 	return nil
 }
 
+// previewTargetAdd prints the target that would be added to the named store.
+func previewTargetAdd(name, target string, files, patterns []string) error {
+	_, cfg, err := findRootAndConfig()
+	if err != nil {
+		return err
+	}
+	if _, ok := cfg.Stores[name]; !ok {
+		return fmt.Errorf("store %q not found in config", name)
+	}
+	fmt.Printf("%s would add target to store %s:\n", ui.Dim("[dry-run]"), ui.StoreName(name))
+	fmt.Printf("  target:   %s\n", target)
+	if len(files) > 0 {
+		fmt.Printf("  files:    %v\n", files)
+	}
+	if len(patterns) > 0 {
+		fmt.Printf("  patterns: %v\n", patterns)
+	}
+	return nil
+}
+
+// previewTargetRemove prints the target that would be removed from a store.
+func previewTargetRemove(name, target string) error {
+	_, cfg, err := findRootAndConfig()
+	if err != nil {
+		return err
+	}
+	entry, ok := cfg.Stores[name]
+	if !ok {
+		return fmt.Errorf("store %q not found in config", name)
+	}
+	expandedTarget, err := expandTargetPath(target)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, t := range entry.ResolvedTargets() {
+		expandedExisting, err := expandTargetPath(t.Target)
+		if err != nil {
+			return err
+		}
+		if expandedExisting == expandedTarget {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("store %q has no target %q", name, target)
+	}
+	fmt.Printf("%s would remove target %s from store %s\n", ui.Dim("[dry-run]"), ui.TargetPath(target), ui.StoreName(name))
+	return nil
+}
+
+// previewTargetModify prints the would-be post-modification target entry.
+func previewTargetModify(cmd *cobra.Command, name, target string, files, patterns []string, clearFiles, clearPatterns bool) error {
+	_, cfg, err := findRootAndConfig()
+	if err != nil {
+		return err
+	}
+	entry, ok := cfg.Stores[name]
+	if !ok {
+		return fmt.Errorf("store %q not found in config", name)
+	}
+	expandedTarget, err := expandTargetPath(target)
+	if err != nil {
+		return err
+	}
+	entry.MigrateToMultiTarget()
+	var found *config.TargetEntry
+	for i := range entry.Targets {
+		expandedExisting, err := expandTargetPath(entry.Targets[i].Target)
+		if err != nil {
+			return err
+		}
+		if expandedExisting == expandedTarget {
+			found = &entry.Targets[i]
+			break
+		}
+	}
+	if found == nil {
+		return fmt.Errorf("store %q has no target %q", name, target)
+	}
+	if cmd.Flags().Changed("files") {
+		found.Files = files
+	}
+	if clearFiles {
+		found.Files = nil
+	}
+	if cmd.Flags().Changed("patterns") {
+		found.Patterns = patterns
+	}
+	if clearPatterns {
+		found.Patterns = nil
+	}
+	fmt.Printf("%s would modify target %s on store %s:\n", ui.Dim("[dry-run]"), ui.TargetPath(target), ui.StoreName(name))
+	fmt.Printf("  files:    %v\n", found.Files)
+	fmt.Printf("  patterns: %v\n", found.Patterns)
+	return nil
+}
+
 // previewModify prints the would-be new entry after applying the provided modifications.
 func previewModify(cmd *cobra.Command, name, target string, files, patterns []string, clearFiles, clearPatterns bool) error {
 	_, cfg, err := findRootAndConfig()
