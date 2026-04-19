@@ -149,6 +149,7 @@ func newModifyCmd() *cobra.Command {
 	var clearFiles bool
 	var clearPatterns bool
 	var ops modifyOps
+	var dryRun bool
 
 	cmd := &cobra.Command{
 		Use:   "modify <name>",
@@ -163,6 +164,9 @@ Flags compose in this order: clear, replace, add, remove.
 The old symlinks are removed before applying changes.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if dryRun {
+				return previewModify(cmd, args[0], target, files, patterns, clearFiles, clearPatterns)
+			}
 			return runModify(cmd, args[0], target, files, patterns, clearFiles, clearPatterns, ops)
 		},
 	}
@@ -176,6 +180,7 @@ The old symlinks are removed before applying changes.`,
 	cmd.Flags().StringArrayVar(&ops.removePatterns, "remove-pattern", nil, "remove a pattern from the pattern list (repeatable)")
 	cmd.Flags().BoolVar(&clearFiles, "clear-files", false, "remove all files from the entry")
 	cmd.Flags().BoolVar(&clearPatterns, "clear-patterns", false, "remove all patterns from the entry")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would change without applying it")
 	cmd.ValidArgsFunction = completeStoreNames
 
 	return cmd
@@ -184,6 +189,7 @@ The old symlinks are removed before applying changes.`,
 func newRemoveCmd() *cobra.Command {
 	var all bool
 	var yes bool
+	var dryRun bool
 
 	cmd := &cobra.Command{
 		Use:   "remove <name>",
@@ -198,6 +204,9 @@ confirmation unless --yes is passed.`,
 				if len(args) > 0 {
 					return fmt.Errorf("--all does not accept a store name")
 				}
+				if dryRun {
+					return previewRemoveAll()
+				}
 				if !yes && !promptYesNo("Remove ALL configured stores?") {
 					cmd.SilenceUsage = true
 					return fmt.Errorf("aborted")
@@ -207,24 +216,36 @@ confirmation unless --yes is passed.`,
 			if len(args) == 0 {
 				return fmt.Errorf("specify a store name or use --all")
 			}
+			if dryRun {
+				return previewRemove(args[0])
+			}
 			return runRemove(cmd, args)
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "remove every configured store")
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip confirmation prompt when using --all")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would be removed without making changes")
 	cmd.ValidArgsFunction = completeStoreNames
 	return cmd
 }
 
 func newRemoveAllCmd() *cobra.Command {
-	return &cobra.Command{
+	var dryRun bool
+	cmd := &cobra.Command{
 		Use:        "removeall",
 		Short:      "Remove all store symlinks",
 		Long:       "Removes symlinks and config entries for all stores defined in the config.",
 		Deprecated: "use `store remove --all` instead.",
 		Hidden:     true,
-		RunE:       runRemoveAll,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if dryRun {
+				return previewRemoveAll()
+			}
+			return runRemoveAll(cmd, args)
+		},
 	}
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would be removed without making changes")
+	return cmd
 }
 
 func newStatusCmd() *cobra.Command {
@@ -295,6 +316,7 @@ func newTargetAddCmd() *cobra.Command {
 	var target string
 	var files []string
 	var patterns []string
+	var dryRun bool
 
 	cmd := &cobra.Command{
 		Use:   "add <name> [target]",
@@ -309,6 +331,9 @@ The target path may be passed positionally or with -t/--target.`,
 			if err != nil {
 				return err
 			}
+			if dryRun {
+				return previewTargetAdd(args[0], resolved, files, patterns)
+			}
 			return runTargetAdd(args[0], resolved, files, patterns)
 		},
 	}
@@ -316,6 +341,7 @@ The target path may be passed positionally or with -t/--target.`,
 	cmd.Flags().StringVarP(&target, "target", "t", "", "target path for the symlink (or pass positionally)")
 	cmd.Flags().StringArrayVarP(&files, "files", "f", nil, "explicit files to symlink (repeatable)")
 	cmd.Flags().StringArrayVarP(&patterns, "patterns", "p", nil, "glob patterns to match files (repeatable, supports **)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would be added without making changes")
 	cmd.ValidArgsFunction = completeStoreNames
 
 	return cmd
@@ -323,6 +349,7 @@ The target path may be passed positionally or with -t/--target.`,
 
 func newTargetRemoveCmd() *cobra.Command {
 	var target string
+	var dryRun bool
 
 	cmd := &cobra.Command{
 		Use:   "remove <name> [target]",
@@ -336,11 +363,15 @@ The target path may be passed positionally or with -t/--target.`,
 			if err != nil {
 				return err
 			}
+			if dryRun {
+				return previewTargetRemove(args[0], resolved)
+			}
 			return runTargetRemove(args[0], resolved)
 		},
 	}
 
 	cmd.Flags().StringVarP(&target, "target", "t", "", "target path to remove (or pass positionally)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would be removed without making changes")
 	cmd.ValidArgsFunction = completeStoreNames
 
 	return cmd
@@ -353,6 +384,7 @@ func newTargetModifyCmd() *cobra.Command {
 	var clearFiles bool
 	var clearPatterns bool
 	var ops modifyOps
+	var dryRun bool
 
 	cmd := &cobra.Command{
 		Use:   "modify <name> [target]",
@@ -370,6 +402,9 @@ as clear → replace → add → remove.`,
 			if err != nil {
 				return err
 			}
+			if dryRun {
+				return previewTargetModify(cmd, args[0], resolved, files, patterns, clearFiles, clearPatterns)
+			}
 			return runTargetModify(cmd, args[0], resolved, files, patterns, clearFiles, clearPatterns, ops)
 		},
 	}
@@ -383,6 +418,7 @@ as clear → replace → add → remove.`,
 	cmd.Flags().StringArrayVar(&ops.removePatterns, "remove-pattern", nil, "remove a pattern from the pattern list (repeatable)")
 	cmd.Flags().BoolVar(&clearFiles, "clear-files", false, "remove all files from the target")
 	cmd.Flags().BoolVar(&clearPatterns, "clear-patterns", false, "remove all patterns from the target")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would change without applying it")
 	cmd.ValidArgsFunction = completeStoreNames
 
 	return cmd
