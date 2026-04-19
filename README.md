@@ -703,29 +703,29 @@ How it works:
 - Removes old symlinks for the selected target first.
 - Re-links only the updated target after saving config.
 
-### `store remove <name>`
+### `store remove [name]`
 
-Removes the store's symlinked targets and deletes the store entry from config.
+Removes the store's symlinked targets and deletes the store entry from config. With `--all`, removes every configured store.
+
+| Flag     | Description                                                       |
+| -------- | ----------------------------------------------------------------- |
+| `--all`  | Remove every configured store                                     |
+| `--yes`  | Skip the confirmation prompt when using `--all`                   |
 
 ```sh
 $ store remove nvim
+$ store remove --all
+$ store remove --all --yes
 ```
 
 ```text
+$ store remove nvim
 Removed store nvim (~/.config/nvim)
 ```
 
-The directory inside your repo is left untouched.
-
-### `store removeall`
-
-Removes all configured store symlinks and deletes their config entries.
-
-```sh
-$ store removeall
-```
-
 ```text
+$ store remove --all
+Remove ALL configured stores? [y/N] y
 Removing all stores:
   removed nvim (~/.config/nvim)
   removed git (~/.config/git)
@@ -733,8 +733,9 @@ Removing all stores:
 
 How it works:
 
-- Runs global `pre-remove` and `post-remove` hooks if present.
-- Continues removing other stores even if one store fails, then reports aggregated errors.
+- With a name, removes that one store's symlinks and config entry. The directory inside your repo is left untouched.
+- With `--all`, prompts for y/N unless `--yes` is passed, then runs global `pre-remove` and `post-remove` hooks and removes every store. Continues removing other stores even if one fails, then reports aggregated errors.
+- `store removeall` is a deprecated alias for `store remove --all --yes` and prints a deprecation warning. Use the new form.
 
 ### `store status [name]`
 
@@ -859,11 +860,12 @@ Prints one decrypted secret value.
 $ store secret get github_token
 ```
 
-### `store secret rm <name>`
+### `store secret remove <name>`
 
-Deletes one secret from `.store/secrets.enc`.
+Deletes one secret from `.store/secrets.enc`. Aliased as `store secret rm`.
 
 ```sh
+$ store secret remove github_token
 $ store secret rm github_token
 ```
 
