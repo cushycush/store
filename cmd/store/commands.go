@@ -302,16 +302,21 @@ func newTargetModifyCmd() *cobra.Command {
 	var patterns []string
 	var clearFiles bool
 	var clearPatterns bool
+	var ops modifyOps
 
 	cmd := &cobra.Command{
 		Use:   "modify <name>",
 		Short: "Modify a target within a store",
 		Long: `Modifies the files or patterns for a specific target within a store.
-The target is identified by its path (-t flag). Each provided flag replaces
-the entire field. Use --clear-files or --clear-patterns to remove those fields.`,
+The target is identified by its path (-t flag).
+
+--files and --patterns replace the entire list for that target. --add-file,
+--remove-file, --add-pattern, --remove-pattern apply incremental changes.
+--clear-files and --clear-patterns empty the list entirely. Flags compose
+as clear → replace → add → remove.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTargetModify(cmd, args[0], target, files, patterns, clearFiles, clearPatterns)
+			return runTargetModify(cmd, args[0], target, files, patterns, clearFiles, clearPatterns, ops)
 		},
 	}
 
@@ -319,6 +324,10 @@ the entire field. Use --clear-files or --clear-patterns to remove those fields.`
 	mustMarkFlagRequired(cmd, "target")
 	cmd.Flags().StringArrayVarP(&files, "files", "f", nil, "replace file list (repeatable)")
 	cmd.Flags().StringArrayVarP(&patterns, "patterns", "p", nil, "replace pattern list (repeatable)")
+	cmd.Flags().StringArrayVar(&ops.addFiles, "add-file", nil, "append a file to the file list (repeatable)")
+	cmd.Flags().StringArrayVar(&ops.removeFiles, "remove-file", nil, "remove a file from the file list (repeatable)")
+	cmd.Flags().StringArrayVar(&ops.addPatterns, "add-pattern", nil, "append a pattern to the pattern list (repeatable)")
+	cmd.Flags().StringArrayVar(&ops.removePatterns, "remove-pattern", nil, "remove a pattern from the pattern list (repeatable)")
 	cmd.Flags().BoolVar(&clearFiles, "clear-files", false, "remove all files from the target")
 	cmd.Flags().BoolVar(&clearPatterns, "clear-patterns", false, "remove all patterns from the target")
 	cmd.ValidArgsFunction = completeStoreNames

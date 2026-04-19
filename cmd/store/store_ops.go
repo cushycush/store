@@ -413,7 +413,7 @@ func runTargetRemove(name, target string) error {
 	return nil
 }
 
-func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []string, clearFiles, clearPatterns bool) error {
+func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []string, clearFiles, clearPatterns bool, ops modifyOps) error {
 	root, cfg, err := findRootAndConfig()
 	if err != nil {
 		return err
@@ -451,18 +451,20 @@ func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []
 	}
 
 	targetEntry := &entry.Targets[found]
+	if clearFiles {
+		targetEntry.Files = nil
+	}
 	if cmd.Flags().Changed("files") {
 		targetEntry.Files = files
 	}
-	if clearFiles {
-		targetEntry.Files = nil
+	targetEntry.Files = applyListOps(targetEntry.Files, ops.addFiles, ops.removeFiles)
+	if clearPatterns {
+		targetEntry.Patterns = nil
 	}
 	if cmd.Flags().Changed("patterns") {
 		targetEntry.Patterns = patterns
 	}
-	if clearPatterns {
-		targetEntry.Patterns = nil
-	}
+	targetEntry.Patterns = applyListOps(targetEntry.Patterns, ops.addPatterns, ops.removePatterns)
 
 	entry.MigrateToSingleTarget()
 
