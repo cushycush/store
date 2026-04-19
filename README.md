@@ -616,24 +616,31 @@ How it works:
 
 ### `store modify <name>`
 
-Updates an existing single-target store. Each provided flag replaces the entire field.
+Updates an existing single-target store. Choose between wholesale replacement, incremental changes, or both.
 
-| Flag               | Short | Description                          |
-| ------------------ | ----- | ------------------------------------ |
-| `--target`         | `-t`  | Replace the target path              |
-| `--files`          | `-f`  | Replace the file list; repeatable    |
-| `--patterns`       | `-p`  | Replace the pattern list; repeatable |
-| `--clear-files`    |       | Remove all files from the entry      |
-| `--clear-patterns` |       | Remove all patterns from the entry   |
+| Flag               | Short | Description                                                |
+| ------------------ | ----- | ---------------------------------------------------------- |
+| `--target`         | `-t`  | Replace the target path                                    |
+| `--files`          | `-f`  | Replace the file list; repeatable                          |
+| `--patterns`       | `-p`  | Replace the pattern list; repeatable                       |
+| `--add-file`       |       | Append a file to the file list; repeatable                 |
+| `--remove-file`    |       | Remove a file from the file list; repeatable               |
+| `--add-pattern`    |       | Append a pattern to the pattern list; repeatable           |
+| `--remove-pattern` |       | Remove a pattern from the pattern list; repeatable         |
+| `--clear-files`    |       | Remove all files from the entry                            |
+| `--clear-patterns` |       | Remove all patterns from the entry                         |
 
 ```sh
 $ store modify nvim -t ~/.config/nvim-custom
 $ store modify shells --clear-files -p ".zsh*" -p ".bash*"
+$ store modify shells --add-file .zprofile
+$ store modify shells --remove-file .bashrc
 ```
 
 How it works:
 
 - Removes old symlinks before applying the updated config.
+- Flags compose in this order: `--clear-*` → `--files`/`--patterns` → `--add-*` → `--remove-*`. This lets `--add-file` append to the existing list without replacing it, or to a replacement list supplied by `--files`.
 - Re-links the store after saving the new entry.
 - Refuses to run on multi-target stores; use `store target modify` instead.
 
@@ -681,24 +688,30 @@ How it works:
 
 ### `store target modify <name>`
 
-Updates the `files` or `patterns` for one target inside a multi-target store.
+Updates the `files` or `patterns` for one target inside a multi-target store. Supports the same wholesale and incremental flags as `store modify`.
 
-| Flag               | Short | Description                          |
-| ------------------ | ----- | ------------------------------------ |
-| `--target`         | `-t`  | Target path to modify; required      |
-| `--files`          | `-f`  | Replace the file list; repeatable    |
-| `--patterns`       | `-p`  | Replace the pattern list; repeatable |
-| `--clear-files`    |       | Remove all files from the target     |
-| `--clear-patterns` |       | Remove all patterns from the target  |
+| Flag               | Short | Description                                                |
+| ------------------ | ----- | ---------------------------------------------------------- |
+| `--target`         | `-t`  | Target path to modify; required                            |
+| `--files`          | `-f`  | Replace the file list; repeatable                          |
+| `--patterns`       | `-p`  | Replace the pattern list; repeatable                       |
+| `--add-file`       |       | Append a file to the file list; repeatable                 |
+| `--remove-file`    |       | Remove a file from the file list; repeatable               |
+| `--add-pattern`    |       | Append a pattern to the pattern list; repeatable           |
+| `--remove-pattern` |       | Remove a pattern from the pattern list; repeatable         |
+| `--clear-files`    |       | Remove all files from the target                           |
+| `--clear-patterns` |       | Remove all patterns from the target                        |
 
 ```sh
 $ store target modify shells -t ~ -f .zshrc -f .bashrc -f .zprofile
+$ store target modify shells -t ~ --add-file .zprofile
 $ store target modify shells -t ~/.config/nushell --clear-files -p "*.nu"
 ```
 
 How it works:
 
 - Removes old symlinks for the selected target first.
+- Flag composition is the same as `store modify`: `--clear-*` → replace → add → remove.
 - Re-links only the updated target after saving config.
 
 ### `store remove <name>`
