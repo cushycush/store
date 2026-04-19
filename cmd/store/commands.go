@@ -12,13 +12,14 @@ func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:     "store",
 		Short:   "A simpler alternative to GNU stow",
-		Long:    "store manages symlinks for your dotfiles without requiring mirrored directory structures.",
+		Long:    "store manages symlinks for your dotfiles without requiring mirrored directory structures.\n\nRun `store apply` to reconcile symlinks from .store/config.yaml.",
 		Version: version,
-		RunE:    runStoreAll,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
 	}
 
 	rootCmd.PersistentFlags().BoolVar(&forceBackups, "force", false, "create .bak backups without prompting")
-	rootCmd.Flags().StringArrayVar(&onlyStores, "only", nil, "only store specific entries by name (repeatable)")
 
 	rootCmd.AddCommand(
 		newApplyCmd(),
