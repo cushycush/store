@@ -480,13 +480,13 @@ Reconciles all configured stores: creates missing symlinks, replaces broken ones
 
 Running `store` with no arguments prints help; `store apply` is the explicit verb that performs the reconciliation.
 
-| Flag      | Description                              |
-| --------- | ---------------------------------------- |
-| `--only`  | Apply only the named stores (repeatable) |
-| `--force` | Create `.bak` backups without prompting  |
+| Flag      | Short | Description                              |
+| --------- | ----- | ---------------------------------------- |
+| `--only`  | `-o`  | Apply only the named stores (repeatable) |
+| `--force` |       | Create `.bak` backups without prompting  |
 
 ```sh
-$ store apply --only nvim --only git
+$ store apply -o nvim -o git
 $ store apply --force
 ```
 
@@ -830,7 +830,7 @@ Previews what `store apply` would do without changing anything.
 
 | Flag     | Description                                |
 | -------- | ------------------------------------------ |
-| `--only` | Preview only the named stores (repeatable) |
+| `--only` (`-o`) | Preview only the named stores (repeatable) |
 
 ```sh
 $ store diff
@@ -914,7 +914,7 @@ $ store secret set api_key "super-secret"
 
 How it works:
 
-- If `value` is omitted, `store` prompts for it with hidden input.
+- If `value` is omitted, `store` prompts for it with hidden input. This is the recommended form; passing the value as an argument exposes it to shell history and process listings, and `store` prints a warning when you do.
 - Reads the passphrase from `STORE_PASSPHRASE` or prompts interactively.
 
 ### `store secret get <name>`

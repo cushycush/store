@@ -55,7 +55,7 @@ replace broken ones, and report conflicts. Run this after cloning a dotfiles
 repo on a new machine, or after changing .store/config.yaml.`,
 		RunE: runStoreAll,
 	}
-	cmd.Flags().StringArrayVar(&onlyStores, "only", nil, "apply only the named stores (repeatable)")
+	cmd.Flags().StringArrayVarP(&onlyStores, "only", "o", nil, "apply only the named stores (repeatable)")
 	return cmd
 }
 
@@ -276,7 +276,7 @@ func newDiffCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringArrayVar(&diffOnly, "only", nil, "only diff specific entries by name (repeatable)")
+	cmd.Flags().StringArrayVarP(&diffOnly, "only", "o", nil, "only diff specific entries by name (repeatable)")
 	return cmd
 }
 
