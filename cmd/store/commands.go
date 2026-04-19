@@ -133,23 +133,32 @@ func newModifyCmd() *cobra.Command {
 	var patterns []string
 	var clearFiles bool
 	var clearPatterns bool
+	var ops modifyOps
 
 	cmd := &cobra.Command{
 		Use:   "modify <name>",
 		Short: "Modify an existing store entry",
-		Long: `Updates fields on an existing store entry. Each provided flag replaces
-the entire field. Use --clear-files or --clear-patterns to remove those fields.
+		Long: `Updates fields on an existing store entry.
+
+--files and --patterns replace the entire list. --add-file, --remove-file,
+--add-pattern, --remove-pattern apply incremental changes without touching
+other entries. --clear-files and --clear-patterns empty the list entirely.
+Flags compose in this order: clear, replace, add, remove.
 
 The old symlinks are removed before applying changes.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runModify(cmd, args[0], target, files, patterns, clearFiles, clearPatterns)
+			return runModify(cmd, args[0], target, files, patterns, clearFiles, clearPatterns, ops)
 		},
 	}
 
 	cmd.Flags().StringVarP(&target, "target", "t", "", "new target path")
 	cmd.Flags().StringArrayVarP(&files, "files", "f", nil, "replace file list (repeatable)")
 	cmd.Flags().StringArrayVarP(&patterns, "patterns", "p", nil, "replace pattern list (repeatable)")
+	cmd.Flags().StringArrayVar(&ops.addFiles, "add-file", nil, "append a file to the file list (repeatable)")
+	cmd.Flags().StringArrayVar(&ops.removeFiles, "remove-file", nil, "remove a file from the file list (repeatable)")
+	cmd.Flags().StringArrayVar(&ops.addPatterns, "add-pattern", nil, "append a pattern to the pattern list (repeatable)")
+	cmd.Flags().StringArrayVar(&ops.removePatterns, "remove-pattern", nil, "remove a pattern from the pattern list (repeatable)")
 	cmd.Flags().BoolVar(&clearFiles, "clear-files", false, "remove all files from the entry")
 	cmd.Flags().BoolVar(&clearPatterns, "clear-patterns", false, "remove all patterns from the entry")
 	cmd.ValidArgsFunction = completeStoreNames
