@@ -215,6 +215,22 @@ if is_symlink "$TARGET_SHELLS2/.zshrc"; then pass "modify changes target and rel
 
 if not_exists "$TARGET_SHELLS/.zshrc"; then pass "old target symlinks removed after modify"; else fail "old target symlinks removed after modify" "old symlink still exists"; fi
 
+vlog "Modify --add-file appends .bashrc without touching .zshrc"
+S modify shells --add-file .bashrc >/dev/null 2>&1
+if is_symlink "$TARGET_SHELLS2/.zshrc" && is_symlink "$TARGET_SHELLS2/.bashrc"; then
+    pass "modify --add-file appends without replacing"
+else
+    fail "modify --add-file appends without replacing" "expected both .zshrc and .bashrc to be linked"
+fi
+
+vlog "Modify --remove-file drops .bashrc, keeps .zshrc"
+S modify shells --remove-file .bashrc >/dev/null 2>&1
+if is_symlink "$TARGET_SHELLS2/.zshrc" && not_exists "$TARGET_SHELLS2/.bashrc"; then
+    pass "modify --remove-file removes single entry"
+else
+    fail "modify --remove-file removes single entry" ".bashrc still linked or .zshrc missing"
+fi
+
 # ============================================================
 printf '\n%s\n' "$(bold '=== store target add / remove / modify ===')"
 # ============================================================

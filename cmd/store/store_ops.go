@@ -69,7 +69,14 @@ func runAdd(name, target string, files, patterns []string) error {
 	return nil
 }
 
-func runModify(cmd *cobra.Command, name, target string, files, patterns []string, clearFiles, clearPatterns bool) error {
+type modifyOps struct {
+	addFiles      []string
+	removeFiles   []string
+	addPatterns   []string
+	removePatterns []string
+}
+
+func runModify(cmd *cobra.Command, name, target string, files, patterns []string, clearFiles, clearPatterns bool, ops modifyOps) error {
 	root, cfg, err := findRootAndConfig()
 	if err != nil {
 		return err
@@ -96,18 +103,20 @@ func runModify(cmd *cobra.Command, name, target string, files, patterns []string
 		}
 		entry.Target = target
 	}
+	if clearFiles {
+		entry.Files = nil
+	}
 	if cmd.Flags().Changed("files") {
 		entry.Files = files
 	}
-	if clearFiles {
-		entry.Files = nil
+	entry.Files = applyListOps(entry.Files, ops.addFiles, ops.removeFiles)
+	if clearPatterns {
+		entry.Patterns = nil
 	}
 	if cmd.Flags().Changed("patterns") {
 		entry.Patterns = patterns
 	}
-	if clearPatterns {
-		entry.Patterns = nil
-	}
+	entry.Patterns = applyListOps(entry.Patterns, ops.addPatterns, ops.removePatterns)
 
 	cfg.Stores[name] = entry
 	if err := config.Save(root, cfg); err != nil {
@@ -404,7 +413,7 @@ func runTargetRemove(name, target string) error {
 	return nil
 }
 
-func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []string, clearFiles, clearPatterns bool) error {
+func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []string, clearFiles, clearPatterns bool, ops modifyOps) error {
 	root, cfg, err := findRootAndConfig()
 	if err != nil {
 		return err
@@ -442,18 +451,20 @@ func runTargetModify(cmd *cobra.Command, name, target string, files, patterns []
 	}
 
 	targetEntry := &entry.Targets[found]
+	if clearFiles {
+		targetEntry.Files = nil
+	}
 	if cmd.Flags().Changed("files") {
 		targetEntry.Files = files
 	}
-	if clearFiles {
-		targetEntry.Files = nil
+	targetEntry.Files = applyListOps(targetEntry.Files, ops.addFiles, ops.removeFiles)
+	if clearPatterns {
+		targetEntry.Patterns = nil
 	}
 	if cmd.Flags().Changed("patterns") {
 		targetEntry.Patterns = patterns
 	}
-	if clearPatterns {
-		targetEntry.Patterns = nil
-	}
+	targetEntry.Patterns = applyListOps(targetEntry.Patterns, ops.addPatterns, ops.removePatterns)
 
 	entry.MigrateToSingleTarget()
 

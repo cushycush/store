@@ -20,6 +20,40 @@ import (
 	"golang.org/x/term"
 )
 
+// applyListOps returns list with add entries appended (deduplicated) and
+// remove entries filtered out. Used by modify/target modify to implement
+// --add-file / --remove-file and --add-pattern / --remove-pattern.
+func applyListOps(list, add, remove []string) []string {
+	seen := make(map[string]bool, len(list))
+	result := make([]string, 0, len(list)+len(add))
+	for _, v := range list {
+		if !seen[v] {
+			result = append(result, v)
+			seen[v] = true
+		}
+	}
+	for _, v := range add {
+		if !seen[v] {
+			result = append(result, v)
+			seen[v] = true
+		}
+	}
+	if len(remove) == 0 {
+		return result
+	}
+	rem := make(map[string]bool, len(remove))
+	for _, v := range remove {
+		rem[v] = true
+	}
+	filtered := result[:0]
+	for _, v := range result {
+		if !rem[v] {
+			filtered = append(filtered, v)
+		}
+	}
+	return filtered
+}
+
 func findRootAndConfig() (string, *config.Config, error) {
 	root, err := config.FindRoot()
 	if err != nil {
