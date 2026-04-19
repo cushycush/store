@@ -149,6 +149,7 @@ func newModifyCmd() *cobra.Command {
 	var clearFiles bool
 	var clearPatterns bool
 	var ops modifyOps
+	var dryRun bool
 
 	cmd := &cobra.Command{
 		Use:   "modify <name>",
@@ -163,6 +164,9 @@ Flags compose in this order: clear, replace, add, remove.
 The old symlinks are removed before applying changes.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if dryRun {
+				return previewModify(cmd, args[0], target, files, patterns, clearFiles, clearPatterns)
+			}
 			return runModify(cmd, args[0], target, files, patterns, clearFiles, clearPatterns, ops)
 		},
 	}
@@ -176,6 +180,7 @@ The old symlinks are removed before applying changes.`,
 	cmd.Flags().StringArrayVar(&ops.removePatterns, "remove-pattern", nil, "remove a pattern from the pattern list (repeatable)")
 	cmd.Flags().BoolVar(&clearFiles, "clear-files", false, "remove all files from the entry")
 	cmd.Flags().BoolVar(&clearPatterns, "clear-patterns", false, "remove all patterns from the entry")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would change without applying it")
 	cmd.ValidArgsFunction = completeStoreNames
 
 	return cmd
@@ -184,6 +189,7 @@ The old symlinks are removed before applying changes.`,
 func newRemoveCmd() *cobra.Command {
 	var all bool
 	var yes bool
+	var dryRun bool
 
 	cmd := &cobra.Command{
 		Use:   "remove <name>",
@@ -198,6 +204,9 @@ confirmation unless --yes is passed.`,
 				if len(args) > 0 {
 					return fmt.Errorf("--all does not accept a store name")
 				}
+				if dryRun {
+					return previewRemoveAll()
+				}
 				if !yes && !promptYesNo("Remove ALL configured stores?") {
 					cmd.SilenceUsage = true
 					return fmt.Errorf("aborted")
@@ -207,24 +216,36 @@ confirmation unless --yes is passed.`,
 			if len(args) == 0 {
 				return fmt.Errorf("specify a store name or use --all")
 			}
+			if dryRun {
+				return previewRemove(args[0])
+			}
 			return runRemove(cmd, args)
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "remove every configured store")
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip confirmation prompt when using --all")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would be removed without making changes")
 	cmd.ValidArgsFunction = completeStoreNames
 	return cmd
 }
 
 func newRemoveAllCmd() *cobra.Command {
-	return &cobra.Command{
+	var dryRun bool
+	cmd := &cobra.Command{
 		Use:        "removeall",
 		Short:      "Remove all store symlinks",
 		Long:       "Removes symlinks and config entries for all stores defined in the config.",
 		Deprecated: "use `store remove --all` instead.",
 		Hidden:     true,
-		RunE:       runRemoveAll,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if dryRun {
+				return previewRemoveAll()
+			}
+			return runRemoveAll(cmd, args)
+		},
 	}
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would be removed without making changes")
+	return cmd
 }
 
 func newStatusCmd() *cobra.Command {

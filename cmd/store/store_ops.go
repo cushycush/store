@@ -182,6 +182,78 @@ func runStoreAll(cmd *cobra.Command, args []string) error {
 	return err
 }
 
+// previewRemove prints what runRemove would do without touching config or filesystem.
+func previewRemove(name string) error {
+	_, cfg, err := findRootAndConfig()
+	if err != nil {
+		return err
+	}
+	entry, ok := cfg.Stores[name]
+	if !ok {
+		return fmt.Errorf("store %q not found in config", name)
+	}
+	targets := entry.ResolvedTargets()
+	fmt.Printf("%s would remove store %s (%d target(s))\n", ui.Dim("[dry-run]"), ui.StoreName(name), len(targets))
+	for _, t := range targets {
+		fmt.Printf("  - unlink %s\n", ui.TargetPath(t.Target))
+	}
+	return nil
+}
+
+// previewRemoveAll prints what runRemoveAll would do without touching anything.
+func previewRemoveAll() error {
+	_, cfg, err := findRootAndConfig()
+	if err != nil {
+		return err
+	}
+	if len(cfg.Stores) == 0 {
+		fmt.Println(ui.Dim("[dry-run]") + " no stores configured")
+		return nil
+	}
+	stores := selectStores(cfg.Stores, onlyStores)
+	stores = filterStoresByPlatform(stores, platform.Detect())
+	fmt.Printf("%s would remove %d store(s):\n", ui.Dim("[dry-run]"), len(stores))
+	for name, entry := range stores {
+		fmt.Printf("  - %s (%s)\n", ui.StoreName(name), ui.TargetPath(entry.Target))
+	}
+	return nil
+}
+
+// previewModify prints the would-be new entry after applying the provided modifications.
+func previewModify(cmd *cobra.Command, name, target string, files, patterns []string, clearFiles, clearPatterns bool) error {
+	_, cfg, err := findRootAndConfig()
+	if err != nil {
+		return err
+	}
+	entry, ok := cfg.Stores[name]
+	if !ok {
+		return fmt.Errorf("store %q not found in config", name)
+	}
+	if entry.IsMultiTarget() {
+		return fmt.Errorf("store %q uses multiple targets; use 'store target modify' instead", name)
+	}
+	if cmd.Flags().Changed("target") {
+		entry.Target = target
+	}
+	if cmd.Flags().Changed("files") {
+		entry.Files = files
+	}
+	if clearFiles {
+		entry.Files = nil
+	}
+	if cmd.Flags().Changed("patterns") {
+		entry.Patterns = patterns
+	}
+	if clearPatterns {
+		entry.Patterns = nil
+	}
+	fmt.Printf("%s would modify store %s:\n", ui.Dim("[dry-run]"), ui.StoreName(name))
+	fmt.Printf("  target:   %s\n", entry.Target)
+	fmt.Printf("  files:    %v\n", entry.Files)
+	fmt.Printf("  patterns: %v\n", entry.Patterns)
+	return nil
+}
+
 func runRemove(cmd *cobra.Command, args []string) error {
 	_ = cmd
 
