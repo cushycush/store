@@ -194,10 +194,12 @@ confirmation unless --yes is passed.`,
 
 func newRemoveAllCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "removeall",
-		Short: "Remove all store symlinks",
-		Long:  "Removes symlinks and config entries for all stores defined in the config.",
-		RunE:  runRemoveAll,
+		Use:        "removeall",
+		Short:      "Remove all store symlinks",
+		Long:       "Removes symlinks and config entries for all stores defined in the config.",
+		Deprecated: "use `store remove --all` instead.",
+		Hidden:     true,
+		RunE:       runRemoveAll,
 	}
 }
 
