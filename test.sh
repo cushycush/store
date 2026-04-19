@@ -260,6 +260,14 @@ if not_exists "$TARGET_NU/config.nu"; then pass "target remove accepts positiona
 printf '\n%s\n' "$(bold '=== store remove ===')"
 # ============================================================
 
+vlog "Dry-run remove configs (no changes)"
+out=$(S remove configs --dry-run 2>&1)
+if [[ "$out" == *"would remove"* ]] && is_symlink "$TARGET_CONFIGS/app.conf"; then
+    pass "remove --dry-run previews without unlinking"
+else
+    fail "remove --dry-run previews without unlinking" "expected dry-run message and symlink intact"
+fi
+
 vlog "Removing configs store"
 S remove configs >/dev/null 2>&1
 if not_exists "$TARGET_CONFIGS/app.conf"; then pass "remove deletes symlinks and config entry"; else fail "remove deletes symlinks and config entry" "symlink still exists"; fi
