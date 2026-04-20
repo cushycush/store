@@ -14,6 +14,9 @@ func newRootCmd() *cobra.Command {
 		Short:   "A simpler alternative to GNU stow",
 		Long:    "store manages symlinks for your dotfiles without requiring mirrored directory structures.\n\nRun `store apply` to reconcile symlinks from .store/config.yaml.\nRun `store tui` for an interactive dashboard.",
 		Version: version,
+		// Suppress Cobra's reflex of dumping full flag help after every
+		// error. Errors still print; usage dumps are available via --help.
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -48,15 +51,24 @@ func newRootCmd() *cobra.Command {
 }
 
 func newApplyCmd() *cobra.Command {
+	var dryRun bool
 	cmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Apply all configured stores",
 		Long: `Reconcile symlinks for all configured stores: create missing links,
 replace broken ones, and report conflicts. Run this after cloning a dotfiles
-repo on a new machine, or after changing .store/config.yaml.`,
-		RunE: runStoreAll,
+repo on a new machine, or after changing .store/config.yaml.
+
+Pass --dry-run to preview the plan without touching the filesystem.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if dryRun {
+				return runDiff(cmd, args, onlyStores)
+			}
+			return runStoreAll(cmd, args)
+		},
 	}
 	cmd.Flags().StringArrayVarP(&onlyStores, "only", "o", nil, "apply only the named stores (repeatable)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview changes without applying them (equivalent to store diff)")
 	return cmd
 }
 
@@ -127,20 +139,25 @@ func newAddCmd() *cobra.Command {
 	var patterns []string
 
 	cmd := &cobra.Command{
-		Use:   "add <name>",
+		Use:   "add <name> [target]",
 		Short: "Add a store to config and create its symlinks",
-		Long: `Adds a new store entry to config. Use flags to set the target path,
-explicit files, and/or glob patterns for file-level symlinks.
+		Long: `Adds a new store entry to config. The target path may be passed
+positionally or via -t/--target. Use flags to set explicit files or glob
+patterns for file-level symlinks.
 
-Without --target, the entry is saved to config but no symlinks are created.
+Without a target, the entry is saved to config but no symlinks are created.
 Without --files or --patterns, the entire directory is symlinked to the target.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAdd(args[0], target, files, patterns)
+			resolved, err := resolveOptionalPositionalTarget(cmd, args, target)
+			if err != nil {
+				return err
+			}
+			return runAdd(args[0], resolved, files, patterns)
 		},
 	}
 
-	cmd.Flags().StringVarP(&target, "target", "t", "", "target path for the symlink")
+	cmd.Flags().StringVarP(&target, "target", "t", "", "target path for the symlink (or pass positionally)")
 	cmd.Flags().StringArrayVarP(&files, "files", "f", nil, "explicit files to symlink (repeatable)")
 	cmd.Flags().StringArrayVarP(&patterns, "patterns", "p", nil, "glob patterns to match files (repeatable, supports **)")
 
@@ -257,9 +274,14 @@ func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status [name]",
 		Short: "Show symlink status",
-		Long:  "Shows the symlink state for one or all stores.",
-		Args:  cobra.MaximumNArgs(1),
-		RunE:  runStatus,
+		Long: `Shows the current symlink state (linked, missing, conflict, broken, drift)
+for one or all stores.
+
+For a one-line summary of configured stores without touching the filesystem,
+use ` + "`store list`" + `. For a preview of the changes ` + "`store apply`" + ` would make,
+use ` + "`store diff`" + `.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: runStatus,
 	}
 	cmd.ValidArgsFunction = completeStoreNames
 	return cmd
@@ -271,7 +293,12 @@ func newDiffCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff",
 		Short: "Preview what store would change",
-		Long:  "Shows what symlinks would be created, replaced, or conflict without making changes.",
+		Long: `Shows which symlinks ` + "`store apply`" + ` would create, replace, conflict
+with, or leave alone, without making any changes.
+
+For the current state of existing symlinks (ignoring what apply would do),
+use ` + "`store status`" + `. For a config-only view without touching the filesystem,
+use ` + "`store list`" + `.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDiff(cmd, args, diffOnly)
 		},
@@ -305,9 +332,13 @@ func newListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List configured stores",
-		Long:  "Prints a one-line summary of every store in the config, without touching the filesystem.",
-		Args:  cobra.NoArgs,
-		RunE:  runList,
+		Long: `Prints a one-line summary of every store in the config, without touching
+the filesystem. Useful for scripting or a quick glance at what's configured.
+
+For live symlink state (linked, missing, conflict) use ` + "`store status`" + `.
+For a preview of what ` + "`store apply`" + ` would change, use ` + "`store diff`" + `.`,
+		Args: cobra.NoArgs,
+		RunE: runList,
 	}
 }
 

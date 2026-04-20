@@ -135,8 +135,32 @@ func (s *Stores) Bottom() {
 	}
 }
 
-// Rows returns the visible rows.
+// Rows returns the visible rows (unbounded). Use Window for a cursor-
+// centered slice bounded by a height budget.
 func (s *Stores) Rows() []Row { return s.view }
+
+// Window returns the slice of rows that should be visible given the
+// available height, keeping the cursor in view. topElided is the count
+// of rows clipped above the window; bottomElided is the count below.
+// When both are zero the whole list fits.
+func (s *Stores) Window(height int) (visible []Row, topElided, bottomElided int) {
+	if height <= 0 || len(s.view) == 0 {
+		return nil, 0, 0
+	}
+	if len(s.view) <= height {
+		return s.view, 0, 0
+	}
+	start := s.cursor - height/2
+	if start < 0 {
+		start = 0
+	}
+	end := start + height
+	if end > len(s.view) {
+		end = len(s.view)
+		start = end - height
+	}
+	return s.view[start:end], start, len(s.view) - end
+}
 
 // Summary returns "N linked  M missing  ..." for the rule above the list.
 func (s *Stores) Summary() string {

@@ -23,8 +23,6 @@ type OpResult struct {
 	Err   error
 	// Reload signals the model to reload config + re-stat every store.
 	Reload bool
-	// CopyPath is emitted by the path op so the model can append the path to the log.
-	CopyPath string
 }
 
 // CmdApplyOne reconciles one store.
@@ -293,6 +291,150 @@ func CmdModifyTarget(root string, cfg *config.Config, name, target string) tea.C
 	}
 }
 
+// CmdTargetAdd adds a new target path to an existing store and links it.
+// The store is migrated to multi-target format if needed.
+func CmdTargetAdd(root string, cfg *config.Config, name, target string) tea.Cmd {
+	return func() tea.Msg {
+		if name == "" || target == "" {
+			return OpResult{Label: "target add", Kind: ActivityWarn, Msg: "need both store name and target path"}
+		}
+		entry, ok := cfg.Stores[name]
+		if !ok {
+			return OpResult{Label: "target add", Kind: ActivityErr, Msg: "no such store: " + name}
+		}
+		entry.MigrateToMultiTarget()
+		for _, t := range entry.Targets {
+			if sameTargetPath(t.Target, target) {
+				return OpResult{Label: "target add", Kind: ActivityErr, Msg: "target already exists: " + target}
+			}
+		}
+		entry.Targets = append(entry.Targets, config.TargetEntry{Target: portableHome(target)})
+		cfg.Stores[name] = entry
+		if err := config.Save(root, cfg); err != nil {
+			return OpResult{Label: "target add", Kind: ActivityErr, Msg: err.Error(), Err: err}
+		}
+		newT := entry.Targets[len(entry.Targets)-1]
+		if err := storeops.StoreTarget(root, name, newT); err != nil {
+			return OpResult{Label: "target add", Kind: ActivityErr, Msg: err.Error(), Err: err, Reload: true}
+		}
+		return OpResult{Label: "target add", Kind: ActivityOK, Msg: "added target " + target + " to " + name, Reload: true}
+	}
+}
+
+// CmdTargetRemove unlinks one target and removes it from config. If only
+// one target remains afterwards the store is migrated back to single-
+// target format.
+func CmdTargetRemove(root string, cfg *config.Config, name, target string) tea.Cmd {
+	return func() tea.Msg {
+		if name == "" || target == "" {
+			return OpResult{Label: "target remove", Kind: ActivityWarn, Msg: "need both store name and target path"}
+		}
+		entry, ok := cfg.Stores[name]
+		if !ok {
+			return OpResult{Label: "target remove", Kind: ActivityErr, Msg: "no such store: " + name}
+		}
+		entry.MigrateToMultiTarget()
+		idx := -1
+		for i, t := range entry.Targets {
+			if sameTargetPath(t.Target, target) {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return OpResult{Label: "target remove", Kind: ActivityErr, Msg: "no such target: " + target}
+		}
+		_ = storeops.StoreRemoveTarget(root, name, entry.Targets[idx])
+		entry.Targets = append(entry.Targets[:idx], entry.Targets[idx+1:]...)
+		entry.MigrateToSingleTarget()
+		cfg.Stores[name] = entry
+		if err := config.Save(root, cfg); err != nil {
+			return OpResult{Label: "target remove", Kind: ActivityErr, Msg: err.Error(), Err: err, Reload: true}
+		}
+		return OpResult{Label: "target remove", Kind: ActivityOK, Msg: "removed target " + target + " from " + name, Reload: true}
+	}
+}
+
+// CmdTargetModify replaces files on a specific target. For the full flag
+// matrix (add/remove/clear patterns) the CLI remains the place to go;
+// the TUI exposes the common case of setting a new file list.
+func CmdTargetModify(root string, cfg *config.Config, name, target string, files []string) tea.Cmd {
+	return func() tea.Msg {
+		if name == "" || target == "" {
+			return OpResult{Label: "target modify", Kind: ActivityWarn, Msg: "need both store name and target path"}
+		}
+		entry, ok := cfg.Stores[name]
+		if !ok {
+			return OpResult{Label: "target modify", Kind: ActivityErr, Msg: "no such store: " + name}
+		}
+		if entry.IsMultiTarget() {
+			for i, t := range entry.Targets {
+				if sameTargetPath(t.Target, target) {
+					_ = storeops.StoreRemoveTarget(root, name, t)
+					entry.Targets[i].Files = files
+					entry.Targets[i].Patterns = nil
+					cfg.Stores[name] = entry
+					if err := config.Save(root, cfg); err != nil {
+						return OpResult{Label: "target modify", Kind: ActivityErr, Msg: err.Error(), Err: err, Reload: true}
+					}
+					if err := storeops.StoreTarget(root, name, entry.Targets[i]); err != nil {
+						return OpResult{Label: "target modify", Kind: ActivityErr, Msg: err.Error(), Err: err, Reload: true}
+					}
+					return OpResult{Label: "target modify", Kind: ActivityOK, Msg: "modified " + name + " target " + target, Reload: true}
+				}
+			}
+			return OpResult{Label: "target modify", Kind: ActivityErr, Msg: "no such target: " + target}
+		}
+		if !sameTargetPath(entry.Target, target) {
+			return OpResult{Label: "target modify", Kind: ActivityErr, Msg: "no such target: " + target}
+		}
+		_ = storeops.StoreRemove(root, name, entry)
+		entry.Files = files
+		entry.Patterns = nil
+		cfg.Stores[name] = entry
+		if err := config.Save(root, cfg); err != nil {
+			return OpResult{Label: "target modify", Kind: ActivityErr, Msg: err.Error(), Err: err, Reload: true}
+		}
+		if err := storeops.Store(root, name, entry); err != nil {
+			return OpResult{Label: "target modify", Kind: ActivityErr, Msg: err.Error(), Err: err, Reload: true}
+		}
+		return OpResult{Label: "target modify", Kind: ActivityOK, Msg: "modified " + name + " target " + target, Reload: true}
+	}
+}
+
+// CmdApplyTarget reconciles one target of a store without touching the
+// others. Used by the in-TUI target submenu.
+func CmdApplyTarget(root, name string, te config.TargetEntry) tea.Cmd {
+	return func() tea.Msg {
+		if err := storeops.StoreTarget(root, name, te); err != nil {
+			return OpResult{Label: "apply " + te.Target, Kind: ActivityErr, Msg: err.Error(), Err: err, Reload: true}
+		}
+		return OpResult{Label: "apply " + te.Target, Kind: ActivityOK, Msg: "applied target " + te.Target, Reload: true}
+	}
+}
+
+// CmdUnlinkTarget removes the symlinks for one target without touching
+// the others or the config entry.
+func CmdUnlinkTarget(root, name string, te config.TargetEntry) tea.Cmd {
+	return func() tea.Msg {
+		if err := storeops.StoreRemoveTarget(root, name, te); err != nil {
+			return OpResult{Label: "unlink " + te.Target, Kind: ActivityErr, Msg: err.Error(), Err: err, Reload: true}
+		}
+		return OpResult{Label: "unlink " + te.Target, Kind: ActivityOK, Msg: "unlinked target " + te.Target, Reload: true}
+	}
+}
+
+// sameTargetPath returns true if two target paths point at the same
+// location after ~ expansion.
+func sameTargetPath(a, b string) bool {
+	if a == b {
+		return true
+	}
+	ea, _ := config.ExpandHome(a)
+	eb, _ := config.ExpandHome(b)
+	return ea == eb
+}
+
 // CmdRename moves the store directory and updates the config key.
 func CmdRename(root string, cfg *config.Config, old, neu string) tea.Cmd {
 	return func() tea.Msg {
@@ -390,7 +532,7 @@ func CmdPath(root, name string, cfg *config.Config) tea.Cmd {
 			return OpResult{Label: "path", Kind: ActivityErr, Msg: "no such store: " + name}
 		}
 		p := filepath.Join(root, name)
-		return OpResult{Label: "path", Kind: ActivityOK, Msg: p, CopyPath: p}
+		return OpResult{Label: "path", Kind: ActivityOK, Msg: p}
 	}
 }
 

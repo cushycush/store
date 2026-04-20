@@ -7,20 +7,36 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// AnimationFPS is the tick rate while any animation is in flight.
+// AnimationFPS is the fast tick rate used while animations are in flight
+// (staggered reveal, detail flash, fresh-change spark, palette reveal).
 // 40Hz is enough for perceptible motion without straining slow terminals.
 const AnimationFPS = 40
+
+// HeartbeatInterval is the slow cadence for the idle heartbeat glyph.
+// The heartbeat ticks always — it's how "app is alive at rest" is
+// communicated — but once a second is plenty for a 3-second pulse.
+const HeartbeatInterval = time.Second
 
 // tickInterval is derived from AnimationFPS.
 var tickInterval = time.Second / AnimationFPS
 
-// FrameMsg fires on each animation tick.
+// FrameMsg fires on each animation tick (fast path).
 type FrameMsg time.Time
+
+// HeartbeatMsg fires on each heartbeat tick (slow path).
+type HeartbeatMsg time.Time
 
 // Tick returns a tea.Cmd that fires the next FrameMsg.
 func Tick() tea.Cmd {
 	return tea.Tick(tickInterval, func(t time.Time) tea.Msg {
 		return FrameMsg(t)
+	})
+}
+
+// HeartbeatTick returns a tea.Cmd that fires the next HeartbeatMsg.
+func HeartbeatTick() tea.Cmd {
+	return tea.Tick(HeartbeatInterval, func(t time.Time) tea.Msg {
+		return HeartbeatMsg(t)
 	})
 }
 

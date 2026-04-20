@@ -25,7 +25,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if len(cfg.Stores) == 0 {
-		fmt.Println(ui.Dim("No stores defined in config."))
+		printNoStoresMessage()
 		return nil
 	}
 	names := make([]string, 0, len(cfg.Stores))
@@ -259,6 +259,11 @@ func runStoreAll(cmd *cobra.Command, args []string) error {
 	root, cfg, err := findRootAndConfig()
 	if err != nil {
 		return err
+	}
+
+	if len(cfg.Stores) == 0 {
+		printNoStoresMessage()
+		return nil
 	}
 
 	cfg.Stores = selectStores(cfg.Stores, onlyStores)
@@ -576,7 +581,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	cfg.Stores = filterStoresByPlatform(cfg.Stores, platform.Detect())
 	if len(cfg.Stores) == 0 {
-		fmt.Println(ui.Dim("No stores defined in config."))
+		printNoStoresMessage()
 		return nil
 	}
 

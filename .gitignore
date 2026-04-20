@@ -17,3 +17,8 @@ store
 .zshrc
 .gitconfig
 .gitmodules
+
+# Demo fixtures: the patterns above exist to prevent accidental
+# commits of real user dotfiles, but the hero-demo uses those names
+# deliberately as test content.
+!docs/hero-demo/**

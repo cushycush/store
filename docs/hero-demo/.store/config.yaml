@@ -1,0 +1,33 @@
+vars:
+  editor: nvim
+  email: you@example.com
+
+stores:
+  git:
+    target: "~/.config/git"
+  nvim:
+    target: "~/.config/nvim"
+  shells:
+    targets:
+      - target: "~"
+        files:
+          - .zshrc
+          - .bashrc
+      - target: "~/.config/fish"
+        files:
+          - config.fish
+          - aliases.fish
+      - target: "~/.config/nushell"
+        files:
+          - config.nu
+    hooks:
+      pre: "test -d ~/.config/fish || mkdir -p ~/.config/fish"
+      post: "exec $SHELL -l"
+    when:
+      os: linux
+  tmux:
+    target: "~/.config/tmux"
+  work:
+    target: "~/work"
+    when:
+      hostname: work-laptop

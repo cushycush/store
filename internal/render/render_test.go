@@ -143,6 +143,31 @@ func TestSecretNames(t *testing.T) {
 	}
 }
 
+func TestVarNames(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		{name: "single dot form", content: `hello {{ .Vars.name }}`, want: []string{"name"}},
+		{name: "tight spacing", content: `{{.Vars.editor}}`, want: []string{"editor"}},
+		{name: "pipeline suffix", content: `{{ .Vars.name | lower }}`, want: []string{"name"}},
+		{name: "index form with dashed key", content: `{{ index .Vars "my-key" }}`, want: []string{"my-key"}},
+		{name: "multiple mixed forms", content: `{{ .Vars.a }} and {{ index .Vars "b" }} and {{.Vars.c | upper}}`, want: []string{"a", "c", "b"}},
+		{name: "no matches", content: `plain {{ .Hostname }} {{ secret "x" }}`, want: []string{}},
+		{name: "dotted path keeps first segment", content: `{{ .Vars.foo.bar }}`, want: []string{"foo"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := VarNames([]byte(tt.content))
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("VarNames() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNeedsRendering(t *testing.T) {
 	tests := []struct {
 		name  string

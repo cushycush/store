@@ -4,6 +4,75 @@ All notable changes to `store` are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-04-20
+
+### Breaking
+
+- Running `store` with no arguments no longer reconciles symlinks; it prints
+  help. Use `store apply` (new explicit verb) to reconcile. Scripts, cron
+  jobs, or aliases that relied on bare `store` to reconcile must be updated
+  before upgrading. See [MIGRATING.md](MIGRATING.md).
+- `store removeall` is deprecated in favor of `store remove --all`. The old
+  name still works as a hidden alias and prints a deprecation warning.
+
+### Added
+
+- **Interactive TUI (`store tui`)**: keyboard-driven dashboard with a store
+  ledger, per-store detail pane, and recent activity log. Every CLI verb is
+  reachable from inside it via a `:` command palette with fuzzy matching.
+  Austere single-column layout; ember signature accent; vim-safe keymap;
+  typed confirmation for destructive operations.
+- **Command palette** in the TUI: fuzzy-matches `apply`, `init`, `import`,
+  `adopt`, `add`, `modify`, `remove`, `list`, `path`, `rename`, `edit`,
+  `status`, `diff`, `doctor`, `version`, `target {add,remove,modify}`,
+  `secret {set,get,remove,list}`. Prompts inline for required arguments.
+- **Target submenu** in the TUI: the row action menu's `target…` entry opens
+  a submenu that lists each target with per-target actions (apply, unlink,
+  modify files, remove target).
+- **New CLI verbs**:
+  - `store list` — one-line summary of every configured store; no filesystem
+    access.
+  - `store path <name>` — print the absolute repo path of a store; designed
+    for shell substitution (`cd $(store path nvim)`).
+  - `store rename <old> <new>` — rename a store (moves the directory and
+    updates config).
+  - `store edit` — open `.store/config.yaml` in `$EDITOR`.
+- **`store apply --dry-run`** — preview changes without applying. Equivalent
+  to `store diff`.
+- **`store remove --all`** with `--yes` — remove every configured store at
+  once. Replaces `store removeall`.
+- **Positional target arguments** on `store add`, `store target add`,
+  `store target remove`, and `store target modify`. Both forms work:
+  `store add nvim ~/.config/nvim` and `store add nvim -t ~/.config/nvim`.
+- **Additive modify flags** on `store modify` and `store target modify`:
+  `--add-file`, `--remove-file`, `--add-pattern`, `--remove-pattern`, plus
+  `--clear-files` / `--clear-patterns` alongside the existing replace flags.
+  Compose in order: clear → replace → add → remove.
+- **`--dry-run` coverage** across every mutating command: `import`, `adopt`,
+  `modify`, `remove`, `target add/remove/modify`, and `apply`.
+
+### Changed
+
+- Positional target paths that resolve under `$HOME` are rewritten to a
+  `~`-prefixed form before being stored, restoring the documented portability
+  invariant after the shell expands unquoted `~` before the binary sees it.
+- Empty-state messages across `status`, `list`, `diff`, and `apply` are
+  consistent: *"No stores configured yet. Try `store adopt <path>` or
+  `store add <name> <target>`."*
+- `list`, `status`, and `diff` help text now cross-references the other two
+  so new users can pick the right command without guessing.
+- Error output no longer includes Cobra's usage dump after every error; the
+  error stands on its own and usage remains available via `--help`.
+- README restructured: new Interactive TUI section, chezmoi/dotbot/yadm
+  comparison, expanded Troubleshooting, "How It Works" renamed to "Internals"
+  to disambiguate from Concepts, and a Jump-to sub-TOC at the top of the
+  Commands reference.
+
+### Fixed
+
+- Template rendering skips binary files that coincidentally contain `{{`
+  byte patterns (also shipped as 1.3.1).
+
 ## [1.3.1] - 2026-04-19
 
 ### Fixed
