@@ -12,7 +12,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:     "store",
 		Short:   "A simpler alternative to GNU stow",
-		Long:    "store manages symlinks for your dotfiles without requiring mirrored directory structures.\n\nRun `store apply` to reconcile symlinks from .store/config.yaml.",
+		Long:    "store manages symlinks for your dotfiles without requiring mirrored directory structures.\n\nRun `store apply` to reconcile symlinks from .store/config.yaml.\nRun `store tui` for an interactive dashboard.",
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
@@ -40,6 +40,7 @@ func newRootCmd() *cobra.Command {
 		newVersionCmd(),
 		newTargetCmd(),
 		newSecretCmd(),
+		newTUICmd(),
 		newCompletionCmd(rootCmd),
 	)
 
