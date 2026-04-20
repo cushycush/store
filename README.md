@@ -576,7 +576,7 @@ Implementation details a user might bump into at the edges. You don't need this 
 
 ### Command palette
 
-Press `:` anywhere to open a fuzzy-match palette over every CLI verb: `apply`, `init`, `import`, `adopt`, `add`, `modify`, `remove`, `list`, `path`, `rename`, `edit`, `status`, `diff`, `doctor`, `version`, `target {add,remove,modify}`, `secret {set,get,remove,list}`. Pick an entry with `enter`; the palette prompts inline for any required arguments.
+Press `:` anywhere to open a fuzzy-match palette over every CLI verb: `apply`, `init`, `import`, `adopt`, `add`, `modify`, `remove`, `remove --all`, `list`, `path`, `rename`, `edit`, `status`, `diff`, `doctor`, `version`, `target {add,remove,modify}`, `secret {set,get,remove,list}`. Pick an entry with `enter`; the palette prompts inline for any required arguments.
 
 ### Destructive actions
 
@@ -585,6 +585,10 @@ Press `:` anywhere to open a fuzzy-match palette over every CLI verb: `apply`, `
 ### Multi-target stores
 
 A multi-target store's detail section shows each target as its own collapsible sub-rule with a per-target link count (`3/3 linked`). `space` expands or collapses the focused target. Each target can be linked, unlinked, or modified individually through the action menu's `target…` entry.
+
+### Detail summary
+
+The detail pane shows target, mode, platform, `when:` match status, configured hooks, and — when the store contains template files — a `templates` row summarising how many distinct secrets and `vars` keys are referenced. Counts are cached per store and refreshed on `r`.
 
 ### Activity log
 
@@ -602,13 +606,15 @@ Jump to: [apply](#store-apply) · [init](#store-init) · [import](#store-import)
 
 Reconciles all configured stores: creates missing symlinks, replaces broken ones, and reports conflicts. Run this after cloning a dotfiles repo on a new machine or after editing `.store/config.yaml`. Running `store` with no arguments prints help; `store apply` is the explicit verb that performs the reconciliation.
 
-| Flag      | Short | Description                              |
-| --------- | ----- | ---------------------------------------- |
-| `--only`  | `-o`  | Apply only the named stores (repeatable) |
-| `--force` |       | Create `.bak` backups without prompting  |
+| Flag        | Short | Description                                             |
+| ----------- | ----- | ------------------------------------------------------- |
+| `--only`    | `-o`  | Apply only the named stores (repeatable)                |
+| `--dry-run` |       | Preview changes without applying (equivalent to `diff`) |
+| `--force`   |       | Create `.bak` backups without prompting                 |
 
 ```sh
 $ store apply -o nvim -o git
+$ store apply --dry-run
 $ store apply --force
 ```
 
@@ -1194,7 +1200,7 @@ Creating symlinks on Windows requires either Developer Mode enabled (Settings �
 
 1. Run `store doctor` — it reports skipped stores as informational issues and shows which field didn't match.
 2. Common causes: distro name doesn't match what you expect (e.g. `debian` vs `raspbian`), WSL detection on an unusual setup, or a hostname that changed.
-3. To inspect the detected values, write a quick hook that echoes them — per-store hooks receive `STORE_OS`, `STORE_ARCH`, `STORE_DISTRO`, `STORE_HOSTNAME`, `STORE_SHELL`, and `STORE_WSL` in the environment.
+3. To inspect the detected values, write a quick hook that echoes them — per-store hooks receive `STORE_OS`, `STORE_ARCH`, `STORE_DISTRO`, `STORE_DISTRO_VERSION`, `STORE_HOSTNAME`, `STORE_SHELL`, and `STORE_WSL` in the environment.
 
 ### `STORE_PASSPHRASE` in scripts and CI
 

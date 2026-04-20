@@ -819,6 +819,7 @@ func (a *App) trackOp(cmd tea.Cmd) tea.Cmd {
 // refresh rebuilds the stores list and detail from the loaded config.
 func (a *App) refresh() {
 	a.stores.Refresh(a.root, a.cfg, a.freshMarks, time.Now())
+	a.detail.InvalidateScans()
 }
 
 // flashDetail restarts the detail rule's accent flash. Called when the

@@ -26,6 +26,8 @@ type TemplateData struct {
 
 var secretPattern = regexp.MustCompile(`\{\{\s*secret\s+"([^"]+)"\s*\}\}`)
 var templatePattern = regexp.MustCompile(`\{\{`)
+var varDotPattern = regexp.MustCompile(`\{\{[^{}]*?\.Vars\.([A-Za-z_][A-Za-z0-9_]*)`)
+var varIndexPattern = regexp.MustCompile(`\{\{[^{}]*?index\s+\.Vars\s+"([^"]+)"`)
 
 var errTemplatesFound = fmt.Errorf("render: templates found")
 
@@ -105,6 +107,24 @@ func SecretNames(content []byte) []string {
 		}
 	}
 
+	return names
+}
+
+// VarNames extracts all user-defined var names referenced from the config
+// `vars:` map. Recognises both `{{ .Vars.key }}` (possibly inside a pipeline)
+// and `{{ index .Vars "key" }}` forms.
+func VarNames(content []byte) []string {
+	names := []string{}
+	for _, match := range varDotPattern.FindAllSubmatch(content, -1) {
+		if len(match) >= 2 {
+			names = append(names, string(match[1]))
+		}
+	}
+	for _, match := range varIndexPattern.FindAllSubmatch(content, -1) {
+		if len(match) >= 2 {
+			names = append(names, string(match[1]))
+		}
+	}
 	return names
 }
 

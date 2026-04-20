@@ -2,25 +2,45 @@ package tui
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/cushycush/store/internal/config"
 	"github.com/cushycush/store/internal/linker"
 	"github.com/cushycush/store/internal/platform"
+	"github.com/cushycush/store/internal/render"
 	storeops "github.com/cushycush/store/internal/store"
 )
 
 // Detail holds per-store detail state: which targets are expanded, and
 // which target the user is "within" when navigating via j/k.
 type Detail struct {
-	expanded map[string]map[string]bool // storeName -> targetPath -> expanded
+	expanded  map[string]map[string]bool // storeName -> targetPath -> expanded
+	scanCache map[string]templateScan    // storeName -> cached template-ref counts
+}
+
+// templateScan caches the result of scanTemplateRefs for one store.
+type templateScan struct {
+	secrets int
+	vars    int
 }
 
 // NewDetail returns a detail tracker. All targets default to expanded
 // until the user collapses one.
 func NewDetail() *Detail {
-	return &Detail{expanded: make(map[string]map[string]bool)}
+	return &Detail{
+		expanded:  make(map[string]map[string]bool),
+		scanCache: make(map[string]templateScan),
+	}
+}
+
+// InvalidateScans clears the cached template-ref counts. Called from the
+// app's refresh() so edits to store contents are reflected after `r`.
+func (d *Detail) InvalidateScans() {
+	d.scanCache = make(map[string]templateScan)
 }
 
 // IsExpanded reports whether the given target of a store is currently
@@ -82,6 +102,9 @@ func RenderDetail(root, name string, cfg *config.Config, pi platform.Info, d *De
 			label = lipgloss.NewStyle().Foreground(ColorDim).Render("skipped")
 		}
 		b.WriteString(line("  filter", label))
+	}
+	if secrets, vars := d.scanTemplates(filepath.Join(root, name), name); secrets > 0 || vars > 0 {
+		b.WriteString(line("  templates", templateSummary(secrets, vars)))
 	}
 	if entry.Hooks != nil && (entry.Hooks.Pre != "" || entry.Hooks.Post != "") {
 		b.WriteString("\n")
@@ -232,6 +255,60 @@ func renderTargetRule(target string, st State, linked, total int, expanded bool,
 		fill = 1
 	}
 	return "  " + title + " " + strings.Repeat(" ", fill) + rightStyled
+}
+
+// scanTemplates returns cached template-ref counts for one store, computing
+// and memoising on first call. The cache is invalidated by InvalidateScans,
+// which the App calls on every refresh() so edits are picked up after `r`.
+func (d *Detail) scanTemplates(dir, storeName string) (secrets, vars int) {
+	if r, ok := d.scanCache[storeName]; ok {
+		return r.secrets, r.vars
+	}
+	r := scanTemplateRefs(dir)
+	d.scanCache[storeName] = r
+	return r.secrets, r.vars
+}
+
+// scanTemplateRefs walks a store's source directory and returns the count
+// of unique secret names and unique var names referenced across all text
+// files. Missing directories, binary files, and read errors are skipped.
+func scanTemplateRefs(dir string) templateScan {
+	secretSet := map[string]struct{}{}
+	varSet := map[string]struct{}{}
+	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() || !d.Type().IsRegular() {
+			return nil
+		}
+		content, readErr := os.ReadFile(path)
+		if readErr != nil || render.IsBinary(content) {
+			return nil
+		}
+		if !render.HasTemplates(content) {
+			return nil
+		}
+		for _, s := range render.SecretNames(content) {
+			secretSet[s] = struct{}{}
+		}
+		for _, v := range render.VarNames(content) {
+			varSet[v] = struct{}{}
+		}
+		return nil
+	})
+	return templateScan{secrets: len(secretSet), vars: len(varSet)}
+}
+
+func templateSummary(secrets, vars int) string {
+	parts := make([]string, 0, 2)
+	if secrets > 0 {
+		parts = append(parts, plural(secrets, "secret", "secrets"))
+	}
+	if vars > 0 {
+		parts = append(parts, plural(vars, "var", "vars"))
+	}
+	return strings.Join(parts, " · ")
 }
 
 func fileState(info storeops.StatusInfo) State {
