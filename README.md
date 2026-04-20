@@ -148,13 +148,13 @@ $ store adopt ~/.config/nvim
    Or create a store manually and point it at a target:
 
 ```sh
-$ store add nvim -t ~/.config/nvim
+$ store add nvim ~/.config/nvim
 ```
 
 3. Add a file-level store for files that live in your home directory:
 
 ```sh
-$ store add shells -t ~ -f .zshrc -f .bashrc
+$ store add shells ~ -f .zshrc -f .bashrc
 ```
 
 4. Add more targets to the same store:
@@ -594,7 +594,7 @@ Every operation writes an entry to the activity log. The main view shows the lat
 
 Reference for every subcommand. For a task-oriented tour, see [Quick Start](#quick-start) and [Concepts](#concepts). Run `store --help` for the live CLI tree.
 
-Jump to: [apply](#store-apply) · [init](#store-init) · [import](#store-import) · [adopt](#store-adopt-path) · [add](#store-add-name) · [modify](#store-modify-name) · [list](#store-list) · [path](#store-path-name) · [rename](#store-rename-old-new) · [edit](#store-edit) · [target add](#store-target-add-name-target) · [target remove](#store-target-remove-name-target) · [target modify](#store-target-modify-name-target) · [remove](#store-remove-name) · [status](#store-status-name) · [diff](#store-diff) · [doctor](#store-doctor) · [tui](#store-tui) · [version](#store-version) · [secret set](#store-secret-set-name-value) · [secret get](#store-secret-get-name) · [secret remove](#store-secret-remove-name) · [secret list](#store-secret-list) · [completion](#store-completion-bashzshfishpowershell)
+Jump to: [apply](#store-apply) · [init](#store-init) · [import](#store-import) · [adopt](#store-adopt-path) · [add](#store-add-name-target) · [modify](#store-modify-name) · [list](#store-list) · [path](#store-path-name) · [rename](#store-rename-old-new) · [edit](#store-edit) · [target add](#store-target-add-name-target) · [target remove](#store-target-remove-name-target) · [target modify](#store-target-modify-name-target) · [remove](#store-remove-name) · [status](#store-status-name) · [diff](#store-diff) · [doctor](#store-doctor) · [tui](#store-tui) · [version](#store-version) · [secret set](#store-secret-set-name-value) · [secret get](#store-secret-get-name) · [secret remove](#store-secret-remove-name) · [secret list](#store-secret-list) · [completion](#store-completion-bashzshfishpowershell)
 
 ### `store apply`
 
@@ -709,28 +709,30 @@ How it works:
 - `--files` and `--patterns` adopt only matching files from a directory, creating a file-mode store entry.
 - Rejects paths that are already symlinks — use `store import` for those.
 
-### `store add <name>`
+### `store add <name> [target]`
 
-Creates a store directory if needed, adds the config entry, and immediately links it if a target is provided.
+Creates a store directory if needed, adds the config entry, and immediately links it if a target is provided. The target path may be passed positionally or via `-t`/`--target`.
 
 | Flag         | Short | Description                                             |
 | ------------ | ----- | ------------------------------------------------------- |
-| `--target`   | `-t`  | Target path for the store                               |
+| `--target`   | `-t`  | Target path (or pass positionally)                      |
 | `--files`    | `-f`  | Explicit files to link individually; repeatable         |
 | `--patterns` | `-p`  | Glob patterns to match files; repeatable; supports `**` |
 
 ```sh
-$ store add nvim -t ~/.config/nvim
-$ store add shells -t ~ -f .zshrc -f .bashrc
-$ store add configs -t ~/.config -p "**/*.conf"
-$ store add git
+$ store add nvim ~/.config/nvim
+$ store add shells ~ -f .zshrc -f .bashrc
+$ store add configs ~/.config -p "**/*.conf"
+$ store add nvim -t ~/.config/nvim   # flag form still works
+$ store add git                      # no target yet; linked later
 ```
 
 How it works:
 
-- Without `--target`, the store is saved but not linked yet.
+- Without a target, the store is saved but not linked yet.
 - Without `--files` or `--patterns`, the entire store directory is linked.
 - Relative targets are resolved to absolute paths before being saved.
+- Passing both a positional target and `--target` is an error; pick one.
 
 ### `store modify <name>`
 

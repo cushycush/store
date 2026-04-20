@@ -54,6 +54,23 @@ func applyListOps(list, add, remove []string) []string {
 	return filtered
 }
 
+// resolveOptionalPositionalTarget is the same as resolvePositionalTarget but
+// allows a missing target (returns ""). Used by `store add`, which accepts a
+// name without a target — the entry is saved and linked later.
+func resolveOptionalPositionalTarget(cmd *cobra.Command, args []string, flagValue string) (string, error) {
+	positional := ""
+	if len(args) >= 2 {
+		positional = args[1]
+	}
+	if positional != "" && cmd.Flags().Changed("target") {
+		return "", fmt.Errorf("target given both as positional argument and via --target; pick one")
+	}
+	if positional != "" {
+		return positional, nil
+	}
+	return flagValue, nil
+}
+
 // resolvePositionalTarget returns the target path from args[1] or --target,
 // erroring if both or neither are supplied. Used by target add/remove/modify.
 func resolvePositionalTarget(cmd *cobra.Command, args []string, flagValue string) (string, error) {

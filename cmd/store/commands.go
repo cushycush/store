@@ -127,20 +127,25 @@ func newAddCmd() *cobra.Command {
 	var patterns []string
 
 	cmd := &cobra.Command{
-		Use:   "add <name>",
+		Use:   "add <name> [target]",
 		Short: "Add a store to config and create its symlinks",
-		Long: `Adds a new store entry to config. Use flags to set the target path,
-explicit files, and/or glob patterns for file-level symlinks.
+		Long: `Adds a new store entry to config. The target path may be passed
+positionally or via -t/--target. Use flags to set explicit files or glob
+patterns for file-level symlinks.
 
-Without --target, the entry is saved to config but no symlinks are created.
+Without a target, the entry is saved to config but no symlinks are created.
 Without --files or --patterns, the entire directory is symlinked to the target.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAdd(args[0], target, files, patterns)
+			resolved, err := resolveOptionalPositionalTarget(cmd, args, target)
+			if err != nil {
+				return err
+			}
+			return runAdd(args[0], resolved, files, patterns)
 		},
 	}
 
-	cmd.Flags().StringVarP(&target, "target", "t", "", "target path for the symlink")
+	cmd.Flags().StringVarP(&target, "target", "t", "", "target path for the symlink (or pass positionally)")
 	cmd.Flags().StringArrayVarP(&files, "files", "f", nil, "explicit files to symlink (repeatable)")
 	cmd.Flags().StringArrayVarP(&patterns, "patterns", "p", nil, "glob patterns to match files (repeatable, supports **)")
 
