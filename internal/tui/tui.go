@@ -2,6 +2,7 @@ package tui
 
 import (
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ const (
 	OverlayNone OverlayKind = iota
 	OverlayPalette
 	OverlayActions
+	OverlayTargetActions
 	OverlayConfirm
 	OverlayInput
 	OverlaySecrets
@@ -57,21 +59,23 @@ type App struct {
 	filterInput textinput.Model
 
 	// overlays
-	overlay      OverlayKind
-	palette      *Palette
-	actions      *Actions
-	confirm      *Confirm
-	input        *Input
-	secrets      *Secrets
-	doctor       *Doctor
-	help         *Help
-	inputAction  string // routes input result to the right handler
-	inputContext string // carries names/paths across multi-step prompts
+	overlay       OverlayKind
+	palette       *Palette
+	actions       *Actions
+	targetActions *TargetActions
+	confirm       *Confirm
+	input         *Input
+	secrets       *Secrets
+	doctor        *Doctor
+	help          *Help
+	inputAction   string // routes input result to the right handler
+	inputContext  string // carries names/paths across multi-step prompts
 
 	// motion
 	startedAt     time.Time
 	detailFlashAt time.Time
 	freshMarks    map[string]time.Time
+	opsInFlight   int // >0 while a background op is running; freezes the heartbeat
 
 	// pending confirm action
 	confirmAction string
@@ -111,9 +115,37 @@ func (a *App) Run() error {
 	return err
 }
 
-// Init implements tea.Model. We kick off the continuous animation tick.
+// Init implements tea.Model. Kicks off both tick cadences: a fast tick
+// that drives animations (reveal, flash, spark) and a slow tick that
+// drives the idle heartbeat glyph.
 func (a *App) Init() tea.Cmd {
-	return Tick()
+	return tea.Batch(Tick(), HeartbeatTick())
+}
+
+// animationsActive reports whether any timed animation is still in flight.
+// Used by the fast tick to decide whether to re-schedule itself.
+func (a *App) animationsActive() bool {
+	now := time.Now()
+	// Staggered reveal on first paint.
+	revealDur := time.Duration(a.stores.TotalCount())*25*time.Millisecond + 200*time.Millisecond
+	if now.Sub(a.startedAt) < revealDur {
+		return true
+	}
+	// Detail flash decays over ~200ms after the cursor moves.
+	if !a.detailFlashAt.IsZero() && now.Sub(a.detailFlashAt) < 250*time.Millisecond {
+		return true
+	}
+	// Fresh-change sparks decay over 2s.
+	for _, t := range a.freshMarks {
+		if now.Sub(t) < 2*time.Second {
+			return true
+		}
+	}
+	// Palette reveal is complete once Revealed() reaches 1.
+	if a.palette != nil && a.palette.Revealed() < 1 {
+		return true
+	}
+	return false
 }
 
 // Update implements tea.Model.
@@ -126,16 +158,25 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case FrameMsg:
-		// Decay fresh-change sparks. A tick is cheap; re-render every frame
-		// while any animation is in flight or the heartbeat is visible.
-		return a, Tick()
+		// Fast ticks keep going only while an animation needs them.
+		// At idle the fast loop stops; the slow HeartbeatMsg continues to
+		// drive the header pulse.
+		if a.animationsActive() {
+			return a, Tick()
+		}
+		return a, nil
+
+	case HeartbeatMsg:
+		return a, HeartbeatTick()
 
 	case OpResult:
 		a.absorbOpResult(m)
+		// Ops typically change state; kick the fast tick so the
+		// fresh-change spark animates from this moment.
 		if m.Reload {
-			return a, CmdReloadConfig(a.root)
+			return a, tea.Batch(CmdReloadConfig(a.root), Tick())
 		}
-		return a, nil
+		return a, Tick()
 
 	case ConfigReloadedMsg:
 		if m.Err == nil && m.Cfg != nil {
@@ -143,18 +184,25 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.uninit = false
 		}
 		a.refresh()
-		return a, nil
+		return a, Tick()
 	}
 
 	// Overlay takes keystrokes first.
 	if a.overlay != OverlayNone {
-		return a.updateOverlay(msg)
+		model, cmd := a.updateOverlay(msg)
+		if _, ok := msg.(tea.KeyMsg); ok {
+			cmd = tea.Batch(cmd, Tick())
+		}
+		return model, cmd
 	}
 	if a.filterMode {
 		return a.updateFilter(msg)
 	}
 	if k, ok := msg.(tea.KeyMsg); ok {
-		return a.handleKey(k)
+		model, cmd := a.handleKey(k)
+		// Key events may trigger animations (cursor move, palette open).
+		// The fast tick has likely stopped at idle; re-kick it here.
+		return model, tea.Batch(cmd, Tick())
 	}
 	return a, nil
 }
@@ -201,7 +249,7 @@ func (a *App) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if a.uninit {
 		if k.String() == "i" {
-			return a, CmdInit(a.root)
+			return a, a.trackOp(CmdInit(a.root))
 		}
 		if key.Matches(k, a.keys.Palette) {
 			a.overlay = OverlayPalette
@@ -233,13 +281,13 @@ func (a *App) handleListKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.actions = NewActions(name)
 		}
 	case key.Matches(k, a.keys.Space):
-		return a, a.quickToggle()
+		return a, a.trackOp(a.quickToggle())
 	case key.Matches(k, a.keys.Diff):
 		if name := a.stores.Selected(); name != "" {
-			return a, CmdDiff(a.root, name, a.cfg.Stores[name])
+			return a, a.trackOp(CmdDiff(a.root, name, a.cfg.Stores[name]))
 		}
 	case key.Matches(k, a.keys.ApplyAll):
-		return a, CmdApplyAll(a.root, a.cfg)
+		return a, a.trackOp(CmdApplyAll(a.root, a.cfg))
 	case key.Matches(k, a.keys.Remove):
 		if name := a.stores.Selected(); name != "" {
 			a.openRemoveConfirm(name)
@@ -316,7 +364,7 @@ func (a *App) updateOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 			intent := a.palette.Intent()
 			a.overlay = OverlayNone
 			a.palette = nil
-			return a, a.dispatchIntent(intent)
+			return a, a.trackOp(a.dispatchIntent(intent))
 		}
 		return a, cmd
 	case OverlayActions:
@@ -329,7 +377,25 @@ func (a *App) updateOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 			name := a.actions.StoreName
 			a.overlay = OverlayNone
 			a.actions = nil
-			return a, a.dispatchAction(chosen, name)
+			return a, a.trackOp(a.dispatchAction(chosen, name))
+		}
+		return a, nil
+	case OverlayTargetActions:
+		if a.targetActions == nil {
+			a.overlay = OverlayNone
+			return a, nil
+		}
+		if a.targetActions.Update(msg) {
+			name := a.targetActions.StoreName
+			te := a.targetActions.PickedTarget()
+			chosen := a.targetActions.Chosen()
+			cancelled := a.targetActions.Cancelled()
+			a.overlay = OverlayNone
+			a.targetActions = nil
+			if cancelled {
+				return a, nil
+			}
+			return a, a.trackOp(a.dispatchTargetAction(chosen, name, te))
 		}
 		return a, nil
 	case OverlayConfirm:
@@ -343,7 +409,7 @@ func (a *App) updateOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.confirmAction = ""
 			a.confirmCtx = ""
 			if ok {
-				return a, a.runConfirmed(action, ctx)
+				return a, a.trackOp(a.runConfirmed(action, ctx))
 			}
 			a.activity.Warn("cancelled " + action)
 			return a, nil
@@ -366,7 +432,7 @@ func (a *App) updateOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.input = nil
 			a.inputAction = ""
 			a.inputContext = ""
-			return a, a.runInput(action, ctx, value)
+			return a, a.trackOp(a.runInput(action, ctx, value))
 		}
 		return a, cmd
 	case OverlaySecrets:
@@ -418,19 +484,35 @@ func (a *App) dispatchAction(id ActionID, name string) tea.Cmd {
 			"moves the store directory and updates config", "")
 		return nil
 	case ActionTargetOps:
-		// Open the palette preloaded with "target" so the user sees the
-		// three sub-commands immediately. We push the query by hand.
-		a.overlay = OverlayPalette
-		p := NewPalette()
-		p.query.SetValue("target ")
-		p.rebuildMatches()
-		a.palette = p
+		entry := a.cfg.Stores[name]
+		a.overlay = OverlayTargetActions
+		a.targetActions = NewTargetActions(name, entry.ResolvedTargets())
 		return nil
 	case ActionPath:
 		return CmdPath(a.root, name, a.cfg)
 	case ActionRemove:
 		a.openRemoveConfirm(name)
 		return nil
+	}
+	return nil
+}
+
+// dispatchTargetAction maps a TargetAction from the target submenu to a
+// tea.Cmd or a follow-up overlay.
+func (a *App) dispatchTargetAction(id TargetAction, name string, te config.TargetEntry) tea.Cmd {
+	switch id {
+	case TActionApply:
+		return CmdApplyTarget(a.root, name, te)
+	case TActionUnlink:
+		return CmdUnlinkTarget(a.root, name, te)
+	case TActionModify:
+		// ctx packs "name\x00target" so runInput can reuse the same
+		// flow as the palette-driven modify path.
+		a.openInput("target_modify_files", name+"\x00"+te.Target,
+			"files for "+te.Target, "space-separated list", strings.Join(te.Files, " "))
+		return nil
+	case TActionRemove:
+		return CmdTargetRemove(a.root, a.cfg, name, te.Target)
 	}
 	return nil
 }
@@ -513,8 +595,16 @@ func (a *App) dispatchIntent(i Intent) tea.Cmd {
 		a.openInput("rename_new", parts[0], "new name for "+parts[0], "", "")
 		return nil
 	case IntentEdit:
-		// Release the terminal so $EDITOR can take over, then resume.
-		return tea.ExecProcess(nil, func(err error) tea.Msg {
+		// Release the terminal so the editor can take over, then restore
+		// the alt screen and reload config when the editor exits.
+		editor := os.Getenv("EDITOR")
+		if editor == "" {
+			editor = "vi"
+		}
+		return tea.ExecProcess(exec.Command(editor, config.ConfigPath(a.root)), func(err error) tea.Msg {
+			if err != nil {
+				return OpResult{Label: "edit", Kind: ActivityErr, Msg: err.Error(), Err: err, Reload: true}
+			}
 			return OpResult{Label: "edit", Kind: ActivityOK, Msg: "edited config", Reload: true}
 		})
 	case IntentStatus:
@@ -544,19 +634,57 @@ func (a *App) dispatchIntent(i Intent) tea.Cmd {
 		// Secret-* intents all land in the same overlay; it handles
 		// name/value/delete flows itself.
 		return nil
-	case IntentTargetAdd, IntentTargetRemove, IntentTargetModify:
-		// These want a name + path. Punt to the palette's argument prompt:
-		// the palette already captured the args into Arg. Split them.
-		parts := strings.Fields(i.Arg)
-		if len(parts) < 2 {
-			a.activity.Warn(i.Name + ": need `<name> <target>`")
+	case IntentTargetAdd:
+		name, target := splitTargetArgs(i.Arg)
+		if name == "" {
+			a.openInput("target_add_name", "", "store name", "", "")
 			return nil
 		}
-		// Minimal in-TUI handling: guide user to the CLI for complex cases.
-		a.activity.Ok(i.Name + " · " + strings.Join(parts, " ") + " — run from the CLI for flag options")
+		if target == "" {
+			a.openInput("target_add_target", name, "target path for "+name, "", "")
+			return nil
+		}
+		return CmdTargetAdd(a.root, a.cfg, name, target)
+	case IntentTargetRemove:
+		name, target := splitTargetArgs(i.Arg)
+		if name == "" {
+			a.openInput("target_remove_name", "", "store name", "", "")
+			return nil
+		}
+		if target == "" {
+			a.openInput("target_remove_target", name, "target path to remove", "", "")
+			return nil
+		}
+		return CmdTargetRemove(a.root, a.cfg, name, target)
+	case IntentTargetModify:
+		name, target := splitTargetArgs(i.Arg)
+		if name == "" {
+			a.openInput("target_modify_name", "", "store name", "", "")
+			return nil
+		}
+		if target == "" {
+			a.openInput("target_modify_target", name, "target path to modify", "", "")
+			return nil
+		}
+		a.openInput("target_modify_files", name+"\x00"+target, "files for "+target, "space-separated list", "")
 		return nil
 	}
 	return nil
+}
+
+// splitTargetArgs splits a palette argument like "shells ~/.config/fish"
+// into a store name and a target path. Extra whitespace is preserved in
+// the target portion in case the path itself contains spaces.
+func splitTargetArgs(arg string) (name, target string) {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		return "", ""
+	}
+	idx := strings.IndexAny(arg, " \t")
+	if idx < 0 {
+		return arg, ""
+	}
+	return arg[:idx], strings.TrimSpace(arg[idx+1:])
 }
 
 // openInput configures an input overlay, routing its result back through
@@ -620,6 +748,30 @@ func (a *App) runInput(action, ctx, value string) tea.Cmd {
 		return nil
 	case "rename_new":
 		return CmdRename(a.root, a.cfg, ctx, value)
+	case "target_add_name":
+		a.openInput("target_add_target", value, "target path for "+value, "", "")
+		return nil
+	case "target_add_target":
+		return CmdTargetAdd(a.root, a.cfg, ctx, value)
+	case "target_remove_name":
+		a.openInput("target_remove_target", value, "target path to remove from "+value, "", "")
+		return nil
+	case "target_remove_target":
+		return CmdTargetRemove(a.root, a.cfg, ctx, value)
+	case "target_modify_name":
+		a.openInput("target_modify_target", value, "target path to modify on "+value, "", "")
+		return nil
+	case "target_modify_target":
+		a.openInput("target_modify_files", value+"\x00"+ctx, "files for "+value, "space-separated list", "")
+		return nil
+	case "target_modify_files":
+		// ctx packs "name\x00target" so we don't need extra state.
+		parts := strings.SplitN(ctx, "\x00", 2)
+		if len(parts) != 2 {
+			return nil
+		}
+		files := strings.Fields(value)
+		return CmdTargetModify(a.root, a.cfg, parts[0], parts[1], files)
 	}
 	return nil
 }
@@ -635,8 +787,12 @@ func (a *App) runConfirmed(action, ctx string) tea.Cmd {
 	return nil
 }
 
-// absorbOpResult records an op's outcome in the activity log.
+// absorbOpResult records an op's outcome in the activity log and
+// decrements the ops-in-flight counter so the heartbeat can resume.
 func (a *App) absorbOpResult(r OpResult) {
+	if a.opsInFlight > 0 {
+		a.opsInFlight--
+	}
 	if r.Msg == "" {
 		return
 	}
@@ -647,6 +803,17 @@ func (a *App) absorbOpResult(r OpResult) {
 		}
 		a.activity.Append(r.Kind, line)
 	}
+}
+
+// trackOp bumps the ops-in-flight counter and returns the command unchanged.
+// Wrapping every dispatch that produces an OpResult keeps opsInFlight
+// balanced against absorbOpResult's decrement. A nil cmd is a no-op.
+func (a *App) trackOp(cmd tea.Cmd) tea.Cmd {
+	if cmd == nil {
+		return nil
+	}
+	a.opsInFlight++
+	return cmd
 }
 
 // refresh rebuilds the stores list and detail from the loaded config.
@@ -728,10 +895,29 @@ func (a *App) renderMain() string {
 		b.WriteString("  " + StyleDim.Render("no stores yet · press : then `adopt` or `add`"))
 		b.WriteString("\n")
 	} else {
-		for i, r := range rows {
-			rev := revealAt(i, len(rows), elapsed, stagger, dur)
-			b.WriteString("  " + RenderRow(r, width-4, i == a.stores.Cursor(), rev))
+		// Budget: roughly half the body height for the list, capped so
+		// the detail pane always has some room. Minimum 5 rows so the
+		// cursor never has nowhere to go.
+		budget := (a.height - 12) / 2
+		if budget < 5 {
+			budget = 5
+		}
+		if budget > len(rows) {
+			budget = len(rows)
+		}
+		visible, topElided, bottomElided := a.stores.Window(budget)
+		cursor := a.stores.Cursor()
+		if topElided > 0 {
+			b.WriteString("  " + StyleDim.Render("↑ "+itoa(topElided)+" more") + "\n")
+		}
+		for i, r := range visible {
+			globalI := topElided + i
+			rev := revealAt(globalI, len(rows), elapsed, stagger, dur)
+			b.WriteString("  " + RenderRow(r, width-4, globalI == cursor, rev))
 			b.WriteString("\n")
+		}
+		if bottomElided > 0 {
+			b.WriteString("  " + StyleDim.Render("↓ "+itoa(bottomElided)+" more") + "\n")
 		}
 	}
 
@@ -788,7 +974,13 @@ func (a *App) renderHeader(width int) string {
 }
 
 func (a *App) renderHeartbeat() string {
-	// A slow 3-second pulse on the accent for the single header dot.
+	// Ops replace the pulse with a spinner. The heartbeat signals
+	// "alive, at rest"; during work it would read as noise.
+	if a.opsInFlight > 0 {
+		frame := int(time.Now().UnixMilli()/120) % 4
+		glyph := []string{"⠋", "⠙", "⠹", "⠸"}[frame]
+		return StyleEmber.Render(glyph)
+	}
 	p := pulse(time.Now(), 3*time.Second)
 	c := Mix(ColorFaint, ColorEmber, 0.3+0.7*p)
 	return lipgloss.NewStyle().Foreground(c).Render(GlyphHeart)
@@ -816,6 +1008,10 @@ func (a *App) renderOverlay(_ string) string {
 		title = ""
 		body = a.actions.View()
 		footer = a.actions.Footer()
+	case OverlayTargetActions:
+		title = ""
+		body = a.targetActions.View()
+		footer = a.targetActions.Footer()
 	case OverlayConfirm:
 		title = ""
 		body = a.confirm.View()

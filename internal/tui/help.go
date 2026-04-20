@@ -50,7 +50,7 @@ func (o *Help) View() string {
 			{"\\", "fullscreen activity log"},
 			{"r", "refresh"},
 			{"?", "this help"},
-			{"q", "quit"},
+			{"q · ctrl+c", "quit"},
 		}},
 	}
 	var b strings.Builder
