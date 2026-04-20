@@ -1,0 +1,4 @@
+[user]
+    email = {{ .Vars.email }}
+[core]
+    editor = {{ .Vars.editor }}
