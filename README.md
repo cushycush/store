@@ -1,8 +1,10 @@
-![store screenshot](https://res.cloudinary.com/cush/image/upload/v1775189496/screenshot-2026-04-02_22-10-09_y9sbug.png)
+![store screenshot](docs/hero.png)
 
 `store` is a dotfile manager for Linux, macOS, and Windows. You keep your config files in one git repo; `store` reads a single YAML file and creates the symlinks that place each file where the relevant program expects to find it — `~/.zshrc`, `~/.config/nvim`, and so on. Unlike GNU Stow, your repo directory structure does not have to mirror your home directory — target paths are declared explicitly. One repo, one config file, one command per machine.
 
 > Bare `store` is non-destructive — it prints help. `store apply` is the verb that reconciles symlinks. `store tui` opens an interactive dashboard.
+
+> **Upgrading from 1.x?** See [MIGRATING.md](MIGRATING.md) — the only breaking change is that bare `store` now prints help instead of reconciling; run `store apply` to reconcile.
 
 ## Table of Contents
 
