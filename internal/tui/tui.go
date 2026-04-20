@@ -667,10 +667,24 @@ func (a *App) View() string {
 		return a.renderFullscreenLog()
 	}
 	main := a.renderMain()
-	if a.overlay == OverlayNone {
-		return main
+	if a.overlay != OverlayNone {
+		return a.renderOverlay(main)
 	}
-	return a.renderOverlay(main)
+	// Pin the footer to the bottom. If the main body overflows the screen,
+	// clip from the bottom so the footer always stays visible.
+	footer := "  " + a.keys.FooterHints()
+	budget := a.height - 2 // one blank line + footer line
+	if budget < 1 {
+		budget = 1
+	}
+	lines := strings.Split(main, "\n")
+	if len(lines) > budget {
+		lines = lines[:budget]
+	}
+	for len(lines) < budget {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n") + "\n\n" + footer
 }
 
 func currentTarget(entry config.StoreEntry) string {
@@ -747,14 +761,13 @@ func (a *App) renderMain() string {
 		}
 	}
 
-	// Activity section
+	// Activity section. Kept last so that when the terminal is short and
+	// the body gets clipped, it's the log that disappears, not the store
+	// list or the detail pane. The footer is pinned separately by View().
 	if line := a.activity.RenderLine(width - 4); line != "" {
 		b.WriteString(Rule(width-4, "recent", "", ColorDim))
-		b.WriteString("\n\n  " + line + "\n")
+		b.WriteString("\n\n  " + line)
 	}
-
-	// Footer hints
-	b.WriteString("\n  " + a.keys.FooterHints())
 	return b.String()
 }
 
