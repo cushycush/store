@@ -1,11 +1,13 @@
-![store logo](https://res.cloudinary.com/cush/image/upload/v1775189496/screenshot-2026-04-02_22-10-09_y9sbug.png)
+![store screenshot](https://res.cloudinary.com/cush/image/upload/v1775189496/screenshot-2026-04-02_22-10-09_y9sbug.png)
 
 `store` is a dotfile manager for Linux, macOS, and Windows. You keep your config files in one git repo; `store` reads a single YAML file and creates the symlinks that place each file where the relevant program expects to find it — `~/.zshrc`, `~/.config/nvim`, and so on. Unlike GNU Stow, your repo directory structure does not have to mirror your home directory — target paths are declared explicitly. One repo, one config file, one command per machine.
+
+> Bare `store` is non-destructive — it prints help. `store apply` is the verb that reconciles symlinks. `store tui` opens an interactive dashboard.
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [How It Differs from GNU Stow](#how-it-differs-from-gnu-stow)
+- [How It Compares](#how-it-compares)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Concepts](#concepts)
@@ -14,11 +16,14 @@
 - [Templates & Secrets](#templates--secrets)
 - [Platform Conditionals](#platform-conditionals)
 - [Ignoring Files](#ignoring-files)
-- [How It Works](#how-it-works)
+- [Internals](#internals)
+- [Interactive TUI](#interactive-tui)
 - [Commands](#commands)
 - [Shell Completion](#shell-completion)
 - [Status Indicators](#status-indicators)
 - [Troubleshooting](#troubleshooting)
+
+---
 
 ## Overview
 
@@ -41,7 +46,7 @@ Example repo layout:
     .gitconfig
 ```
 
-Example result after running `store`:
+Example result after running `store apply`:
 
 ```text
 ~/.config/nvim                -> ~/dotfiles/nvim
@@ -52,7 +57,11 @@ Example result after running `store`:
 ~/.config/git                 -> ~/dotfiles/git
 ```
 
-## How It Differs from GNU Stow
+---
+
+## How It Compares
+
+### vs. GNU Stow
 
 | Differentiator               | GNU Stow                                                | store                                                              |
 | ---------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------ |
@@ -62,7 +71,7 @@ Example result after running `store`:
 | **Granularity**              | Primarily package/file symlinks based on layout         | Whole-directory mode or file-mode with `files`/`patterns`          |
 | **Multiple targets**         | Usually split across separate packages                  | One store can deploy to multiple target paths                      |
 | **Conflict handling**        | Stops and requires manual cleanup                       | Detects conflicts and can move existing files into the store       |
-| **Setup on new machine**     | Run `stow` from the right place with the right packages | Run `store` anywhere inside the repo                               |
+| **Setup on new machine**     | Run `stow` from the right place with the right packages | Run `store apply` anywhere inside the repo                         |
 | **Secret management**        | No built-in encrypted secret store                      | Encrypted secrets plus `{{ secret "name" }}` templates             |
 | **Platform conditionals**    | No built-in platform filters                            | `when:` supports OS, arch, distro, hostname, shell, and WSL        |
 | **Ignore patterns**          | Manual exclusions or separate packages                  | Built-in global ignores plus per-store/per-target `ignore:`        |
@@ -71,6 +80,15 @@ Example result after running `store`:
 | **Import existing symlinks** | No import command                                       | `store import` scans existing symlinks and writes config           |
 | **Adopt existing files**     | Manual move-and-link workflow                           | `store adopt` moves files into the repo and symlinks back          |
 | **Dry run preview**          | No built-in preview command                             | `store diff` shows create/replace/conflict actions before changes  |
+| **Interactive UI**           | None                                                    | `store tui` — dashboard with a command palette                     |
+
+### vs. chezmoi, dotbot, yadm
+
+- **chezmoi.** Chezmoi renders every file through its template engine by default and keeps a shadow source directory; `store` renders only files that reference templates and never shadows — it creates plain symlinks from the target to your repo. If you want `git diff` in the repo to reflect exactly what's on disk, `store` is simpler. If you need deep per-host state that isn't committed, chezmoi handles that out of the box.
+- **dotbot.** Dotbot reads an install YAML and creates links. `store` does too, with a few additions: explicit conflict handling, an `adopt` command that moves existing files into the repo, encrypted secrets, platform conditionals, and a health `doctor` pass. Existing dotbot users can usually get most of the way with `store import`.
+- **yadm.** Yadm wraps git and treats `~` as the working tree. `store` keeps the repo separate and links into `~`. Choose yadm if you want `git status` over your home directory; choose `store` if you want a repo you can `cd` into without `~` surprises.
+
+---
 
 ## Installation
 
@@ -87,6 +105,10 @@ $ yay -S store
 $ yay -S store-git
 ```
 
+### Prebuilt binaries (Linux · macOS · Windows)
+
+Download the archive for your OS and architecture from the [releases page](https://github.com/cushycush/store/releases) and drop `store` (or `store.exe`) onto your `PATH`.
+
 ### go install
 
 ```sh
@@ -98,9 +120,13 @@ $ go install github.com/cushycush/store/cmd/store@latest
 ```sh
 $ git clone https://github.com/cushycush/store.git
 $ cd store
-$ make build VERSION=1.3.1
+$ make build
 $ mv store /usr/local/bin/
 ```
+
+> Windows: creating symlinks requires either Developer Mode enabled in Settings → Privacy & Security → For developers, or running your terminal as Administrator. `store doctor` detects the missing capability and warns on first run. Alternatively, run `store` from WSL.
+
+---
 
 ## Quick Start
 
@@ -156,6 +182,17 @@ $ store apply
 
 If target files already exist, `store apply` detects the conflict, offers to move those files into the repo, and then creates the symlinks.
 
+**Windows example.** Adopt a VS Code settings directory and adopt a PowerShell profile file:
+
+```powershell
+> store adopt $env:APPDATA\Code\User
+> store adopt $HOME\Documents\PowerShell\Microsoft.PowerShell_profile.ps1
+```
+
+**Optional.** Run `store tui` for an interactive dashboard — every CLI verb is accessible from inside it. See [Interactive TUI](#interactive-tui).
+
+---
+
 ## Concepts
 
 Six ideas to keep in mind before you read the command reference. The rest of the README — Config Format, Hooks, Secrets, Commands — assumes these.
@@ -177,6 +214,8 @@ Six ideas to keep in mind before you read the command reference. The rest of the
 - **The config is the source of truth.** `.store/config.yaml` fully describes the symlink state you want on a machine. Running `store apply` reconciles the filesystem to match — it creates missing links, replaces broken ones, and leaves correct ones alone. Changing the config and running `store apply` again is the entire update loop.
 
 - **Conflict handling.** If a target path already exists as a real file or directory (not a `store`-managed symlink), `store` stops before linking and offers to move the existing content into the repo and then symlink back. Nothing gets overwritten silently.
+
+---
 
 ## Config Format
 
@@ -287,6 +326,8 @@ Rules:
 - In YAML, every `~` path must be quoted, for example `target: "~"` or `target: "~/.config/nvim"`.
 - Relative CLI target paths are resolved to absolute paths before being saved.
 
+---
+
 ## Hooks
 
 Hooks let you run shell commands around store operations. Use them for post-link reloads, cache rebuilds, or validation steps tied to a specific store or to the whole repo.
@@ -320,13 +361,12 @@ How it works:
 - Per-store hooks are configured in YAML and executed with `sh -c` on Linux and macOS, and with `cmd.exe /C` on Windows.
 - Global hooks live in `.store/hooks/`. On Linux and macOS they must have the executable bit set and are run directly via their shebang.
 - On Windows the executable bit is ignored; global hooks are dispatched by file extension: `.ps1` scripts run under PowerShell, `.cmd`/`.bat`/`.exe` run directly, and anything else is attempted via `sh` (works under Git Bash or WSL).
-
-Relevant details:
-
 - `pre` hooks abort that store on failure.
 - `post` hooks only warn on failure.
 - `pre-store` and `pre-remove` abort the whole command on failure.
 - Hooks receive `STORE_ROOT`, `STORE_ACTION`, and detected platform variables; per-store hooks also receive `STORE_NAME` and `STORE_TARGET`.
+
+---
 
 ## Templates & Secrets
 
@@ -386,13 +426,12 @@ How it works:
 - Secrets are stored in `.store/secrets.enc`.
 - Rendered files are written into a local staging directory under `$XDG_STATE_HOME/store/<repo-hash>/` or `~/.local/state/store/<repo-hash>/` if `XDG_STATE_HOME` is unset.
 - Files without template expressions are symlinked directly; rendered files are symlinked from the staging directory.
-
-Relevant details:
-
 - Encryption uses Argon2id for key derivation and XChaCha20-Poly1305 for authenticated encryption.
 - If a referenced secret is missing, the render step fails and the store operation stops.
 - The passphrase comes from `STORE_PASSPHRASE` or hidden interactive input.
 - `.store/secrets.enc` is designed to be committed; the plaintext secrets are not.
+
+---
 
 ## Platform Conditionals
 
@@ -425,12 +464,11 @@ How it works:
 - `store` compares each populated `when:` field against detected platform info.
 - All specified fields must match.
 - Stores without `when:` always apply.
-
-Relevant details:
-
 - Detected values include OS, arch, distro, distro version, hostname, shell, and WSL state.
 - Commands that operate on the configured set, such as `store apply`, `store diff`, and `store status`, skip non-matching stores.
 - `store doctor` reports skipped stores as informational issues so you can confirm the filter is doing what you expect.
+
+---
 
 ## Ignoring Files
 
@@ -453,32 +491,114 @@ How it works:
 - Global ignore patterns are always active: `.store`, `.store/**`, `.git`, `.git/**`, `.gitignore`, `.DS_Store`.
 - User-defined `ignore:` patterns are added on top of the global ignore set.
 - Directory ignore patterns such as `scratch/` exclude the whole directory tree.
-
-Relevant details:
-
 - Ignore matching uses the same glob engine as `patterns:`.
 - If a target has `ignore:` or if the store contains globally ignored files, whole-directory mode is automatically promoted to file mode so ignored content never appears at the target.
 - `ignore:` may be defined at the top level for single-target stores or inside each `targets[]` entry for multi-target stores.
 
-## How It Works
+---
 
-- **Root discovery:** commands can run from any subdirectory inside the repo; `store` walks upward until it finds `.store/`.
-- **Portable target storage:** CLI target paths keep `~` prefixes when possible so config stays portable across machines.
-- **Absolute symlinks:** link targets are resolved to absolute source paths so the working directory does not matter.
-- **Conflict resolution:** before linking, `store` detects files or directories already occupying the target and offers to move them into the repo. If files already exist in the store where moved content would land, `store` lists the `.bak` backups it would create.
-- **Whole-directory vs file mode:** no `files` or `patterns` means whole-directory mode unless ignored content forces promotion to file mode.
-- **Template staging:** secret-backed templates are rendered into a machine-local staging directory and linked from there.
-- **Performance:** explicit files use direct stat checks, non-recursive globs avoid full walks, and only `**` patterns trigger recursive traversal.
+## Internals
+
+Implementation details a user might bump into at the edges. You don't need this to use `store`; it's here so the edges are documented.
+
+- **Root discovery.** Commands can run from any subdirectory inside the repo; `store` walks upward until it finds `.store/`.
+- **Portable target storage.** CLI target paths keep `~` prefixes when possible so config stays portable across machines.
+- **Absolute symlinks.** Link targets are resolved to absolute source paths so the working directory does not matter.
+- **Conflict resolution.** Before linking, `store` detects files or directories already occupying the target and offers to move them into the repo. If files already exist in the store where moved content would land, `store` lists the `.bak` backups it would create.
+- **Whole-directory vs file mode.** No `files` or `patterns` means whole-directory mode unless ignored content forces promotion to file mode.
+- **Template staging.** Secret-backed templates are rendered into a machine-local staging directory and linked from there.
+- **Performance.** Explicit files use direct stat checks, non-recursive globs avoid full walks, and only `**` patterns trigger recursive traversal.
+
+---
+
+## Interactive TUI
+
+`store tui` opens a keyboard-driven dashboard. Every CLI verb is reachable from inside it — a handful via single-letter bindings, the rest through the `:` command palette. The dashboard reads as a single vertical column: a ledger of your stores on top, the selected store's detail below, and the recent activity log beneath that. No panes, no outer frame.
+
+```text
+  store                                        ~/dotfiles   linux/amd64  ·
+
+  ─── 4 stores ·  3 linked  1 missing ─────────────────────────────────
+
+     nvim      ~/.config/nvim                             ●  linked
+     shells    3 targets                                  ◐  partial
+     git       ~/.config/git                              ●  linked
+  ▸  tmux      ~/.config/tmux                             ○  missing
+
+  ─── tmux ──────────────────────────────────────────────── missing ─
+
+    target     ~/.config/tmux
+    mode       whole directory
+
+    files
+      ○  tmux.conf
+      ○  plugins/tpm
+
+  ─── recent ─────────────────────────────────────────────────────────
+
+    recent   ✓  refreshed                                          2s
+
+  j/k move   enter actions   space toggle   / filter   : command   ? help
+```
+
+### Keymap
+
+**Navigate**
+
+| Key | Action |
+| --- | ------ |
+| `j` / `k` | Move up / down the store list |
+| `g` / `G` | Top / bottom |
+| `esc` / `h` | Back · close the top overlay |
+
+**Stores**
+
+| Key | Action |
+| --- | ------ |
+| `enter` | Open the action menu for the selected store |
+| `space` | Quick toggle: link if missing, unlink if linked |
+| `d` | Diff — preview to the activity log |
+| `A` | Apply all (reconcile every store) |
+| `R` | Remove the selected store (typed confirmation required) |
+| `/` | Filter the store list live |
+
+**Commands**
+
+| Key | Action |
+| --- | ------ |
+| `:` | Open the command palette |
+| `\` | Toggle full-screen activity log |
+| `r` | Refresh from disk |
+| `?` | Show this keymap inside the TUI |
+| `q` / `ctrl+c` | Quit |
+
+### Command palette
+
+Press `:` anywhere to open a fuzzy-match palette over every CLI verb: `apply`, `init`, `import`, `adopt`, `add`, `modify`, `remove`, `list`, `path`, `rename`, `edit`, `status`, `diff`, `doctor`, `version`, `target {add,remove,modify}`, `secret {set,get,remove,list}`. Pick an entry with `enter`; the palette prompts inline for any required arguments.
+
+### Destructive actions
+
+`remove <name>` and `remove --all` require typing the store's name (or the literal phrase `remove all`) to confirm. Single-store link/unlink is one keystroke; anything broader gates behind a typed confirmation. The safety floor rises with blast radius.
+
+### Multi-target stores
+
+A multi-target store's detail section shows each target as its own collapsible sub-rule with a per-target link count (`3/3 linked`). `space` expands or collapses the focused target. Each target can be linked, unlinked, or modified individually through the action menu's `target…` entry.
+
+### Activity log
+
+Every operation writes an entry to the activity log. The main view shows the latest entry on a single line; press `\` for a full-screen view with scroll (`j`/`k`). The log is a 200-entry ring buffer — older entries fall off as new ones arrive.
+
+---
 
 ## Commands
 
 Reference for every subcommand. For a task-oriented tour, see [Quick Start](#quick-start) and [Concepts](#concepts). Run `store --help` for the live CLI tree.
 
+Jump to: [apply](#store-apply) · [init](#store-init) · [import](#store-import) · [adopt](#store-adopt-path) · [add](#store-add-name) · [modify](#store-modify-name) · [list](#store-list) · [path](#store-path-name) · [rename](#store-rename-old-new) · [edit](#store-edit) · [target add](#store-target-add-name-target) · [target remove](#store-target-remove-name-target) · [target modify](#store-target-modify-name-target) · [remove](#store-remove-name) · [status](#store-status-name) · [diff](#store-diff) · [doctor](#store-doctor) · [tui](#store-tui) · [version](#store-version) · [secret set](#store-secret-set-name-value) · [secret get](#store-secret-get-name) · [secret remove](#store-secret-remove-name) · [secret list](#store-secret-list) · [completion](#store-completion-bashzshfishpowershell)
+
 ### `store apply`
 
-Reconciles all configured stores: creates missing symlinks, replaces broken ones, and reports conflicts. Run this after cloning a dotfiles repo on a new machine or after editing `.store/config.yaml`.
-
-Running `store` with no arguments prints help; `store apply` is the explicit verb that performs the reconciliation.
+Reconciles all configured stores: creates missing symlinks, replaces broken ones, and reports conflicts. Run this after cloning a dotfiles repo on a new machine or after editing `.store/config.yaml`. Running `store` with no arguments prints help; `store apply` is the explicit verb that performs the reconciliation.
 
 | Flag      | Short | Description                              |
 | --------- | ----- | ---------------------------------------- |
@@ -552,11 +672,7 @@ How it works:
 - Keeps only links whose targets resolve inside the repo and point at a top-level store directory.
 - Groups discovered links into single-target or multi-target store entries.
 - Skips stores that already exist in config.
-
-Relevant details:
-
-- Without `--dry-run`, `store import` prints the discovered mapping and asks for confirmation before writing config.
-- The persistent `--force` flag skips that confirmation prompt.
+- Without `--dry-run`, `store import` prints the discovered mapping and asks for confirmation before writing config. The persistent `--force` flag skips that confirmation prompt.
 
 ### `store adopt <path>`
 
@@ -666,7 +782,7 @@ $ store list
 
 ### `store path <name>`
 
-Prints the absolute on-disk path of the store directory inside the repo.
+Prints the absolute on-disk path of the store directory inside the repo. Designed for command substitution in shells.
 
 ```sh
 $ cd $(store path nvim)
@@ -770,11 +886,11 @@ How it works:
 
 Removes the store's symlinked targets and deletes the store entry from config. With `--all`, removes every configured store.
 
-| Flag        | Description                                                       |
-| ----------- | ----------------------------------------------------------------- |
-| `--all`     | Remove every configured store                                     |
-| `--yes`     | Skip the confirmation prompt when using `--all`                   |
-| `--dry-run` | Preview without applying changes                                  |
+| Flag        | Description                                     |
+| ----------- | ----------------------------------------------- |
+| `--all`     | Remove every configured store                   |
+| `--yes`     | Skip the confirmation prompt when using `--all` |
+| `--dry-run` | Preview without applying changes                |
 
 ```sh
 $ store remove nvim
@@ -828,9 +944,9 @@ How it works:
 
 Previews what `store apply` would do without changing anything.
 
-| Flag     | Description                                |
-| -------- | ------------------------------------------ |
-| `--only` (`-o`) | Preview only the named stores (repeatable) |
+| Flag     | Short | Description                                |
+| -------- | ----- | ------------------------------------------ |
+| `--only` | `-o`  | Preview only the named stores (repeatable) |
 
 ```sh
 $ store diff
@@ -883,10 +999,18 @@ What it checks:
 - Empty store directories.
 - Stores skipped on the current platform because of `when:`.
 
-Relevant details:
+How it works:
 
-- `store doctor` exits with an error only when it finds doctor-level errors.
+- Exits with a non-zero code only when doctor-level errors are found.
 - Warnings and info are still printed but do not make the command fail.
+
+### `store tui`
+
+Opens the interactive dashboard. See [Interactive TUI](#interactive-tui) for the full keymap, command palette, and destructive-action conventions.
+
+```sh
+$ store tui
+```
 
 ### `store version`
 
@@ -898,7 +1022,7 @@ $ store --version
 ```
 
 ```text
-store version 1.3.1
+store version <version>
 ```
 
 If built without an injected version, the binary reports `dev`.
@@ -942,7 +1066,7 @@ Lists secret names in sorted order.
 $ store secret list
 ```
 
-Relevant details for all secret commands:
+How it works (all secret commands):
 
 - Secrets are stored in `.store/secrets.enc`.
 - Secret names are listed; secret values are never listed.
@@ -950,21 +1074,13 @@ Relevant details for all secret commands:
 
 ### `store completion [bash|zsh|fish|powershell]`
 
-Generates a shell completion script for the selected shell.
+Generates a shell completion script. See [Shell Completion](#shell-completion) for install steps.
 
-```sh
-$ store completion bash
-$ store completion zsh
-$ store completion fish
-```
-
-Use it with the install instructions in [Shell Completion](#shell-completion).
+---
 
 ## Shell Completion
 
 `store completion` generates completion scripts for supported shells. This is the easiest way to make the command and store-name arguments discoverable from the terminal.
-
-Install examples:
 
 ### Bash
 
@@ -996,11 +1112,10 @@ How it works:
 
 - The CLI generates shell-native completion scripts through Cobra.
 - Existing store names are offered as tab completions for commands that take a configured store name, such as `modify`, `remove`, `status`, and `target` subcommands.
-
-Relevant details:
-
 - If your shell requires an explicit completion system bootstrap, enable that in the shell separately.
 - Regenerate the script after upgrading `store` if you want completion descriptions and command trees to stay current.
+
+---
 
 ## Status Indicators
 
@@ -1012,9 +1127,9 @@ Relevant details:
 | `[broken]`   | A symlink exists but points to a missing source                  |
 | `[drift]`    | A rendered file exists at the target but its content has changed |
 
-These statuses appear in `store status`, and the same underlying states drive `store diff`.
+These statuses appear in `store status`, and the same underlying states drive `store diff`. `store status` also prints a summary line showing the count of each status across all reported stores.
 
-`store status` also prints a summary line showing the count of each status across all reported stores.
+---
 
 ## Troubleshooting
 
@@ -1036,7 +1151,7 @@ Run the command inside a repo initialized with `store init`, or initialize the c
 
 ### Existing files already occupy the target path
 
-`store` reports conflicts before linking and offers to move those files into the store.
+`store apply` reports conflicts before linking and offers to move those files into the store.
 
 ```text
 The following files conflict with store symlinks:
@@ -1055,3 +1170,37 @@ If files already exist inside the store where moved content would land, `store` 
 ### `store doctor` warns about secrets
 
 If templates reference secrets and `.store/secrets.enc` is missing, doctor warns immediately. If the secrets file exists, set `STORE_PASSPHRASE` before running `store doctor` if you want it to verify that referenced secret names are actually present.
+
+### `store apply` failed part way through
+
+`store apply` is idempotent — re-running it picks up where it left off. To narrow down what went wrong:
+
+- `store status` shows what's linked and what isn't.
+- `store diff` shows what `apply` would still change.
+- `store apply --only <name>` runs one store in isolation so the error is easier to read.
+- `store doctor` surfaces configuration problems that may be causing the failure.
+
+### Windows: `store` can't create symlinks
+
+Creating symlinks on Windows requires either Developer Mode enabled (Settings → Privacy & Security → For developers) or running the terminal as Administrator. `store doctor` detects the missing capability on first run. Alternatively, run `store` from WSL, which has no such restriction.
+
+### A store is skipped on a machine where I expect it to apply
+
+`when:` filters compare against detected platform info. If a store isn't matching:
+
+1. Run `store doctor` — it reports skipped stores as informational issues and shows which field didn't match.
+2. Common causes: distro name doesn't match what you expect (e.g. `debian` vs `raspbian`), WSL detection on an unusual setup, or a hostname that changed.
+3. To inspect the detected values, write a quick hook that echoes them — per-store hooks receive `STORE_OS`, `STORE_ARCH`, `STORE_DISTRO`, `STORE_HOSTNAME`, `STORE_SHELL`, and `STORE_WSL` in the environment.
+
+### `STORE_PASSPHRASE` in scripts and CI
+
+Set `STORE_PASSPHRASE` in the environment before running `store apply` or `store doctor` to avoid interactive prompts. With the variable set, `store doctor` additionally verifies every referenced secret is present in the vault. An unset or wrong passphrase causes template rendering to fail loudly — no silent fall-through, no stale output.
+
+### Fast navigation with `store path`
+
+`store path <name>` prints the absolute on-disk path of a store and nothing else — no ANSI, no log output. That makes it safe for command substitution inside aliases and pipelines:
+
+```sh
+$ cd $(store path nvim)
+$ ls -la $(store path shells)
+```
