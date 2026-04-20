@@ -18,6 +18,11 @@ func runDiff(_ *cobra.Command, _ []string, diffOnly []string) error {
 		return err
 	}
 
+	if len(cfg.Stores) == 0 {
+		printNoStoresMessage()
+		return nil
+	}
+
 	cfg.Stores = selectStores(cfg.Stores, diffOnly)
 	selectedStores := cfg.Stores
 	filteredStores := filterStoresByPlatform(selectedStores, platform.Detect())
@@ -116,12 +121,15 @@ func printDiffReport(rows []diffRow) {
 	for _, row := range rows {
 		name := ui.StoreName(fmt.Sprintf("%-*s", nameWidth, row.Name))
 		display := styledDiffDisplay(row, displayWidth)
-		label := diffLabel(row.Label, labelWidth)
 		if row.Error != nil {
+			// Error rows pad the label so the error message aligns.
+			label := diffLabel(row.Label, labelWidth)
 			fmt.Printf("  %s %s %s %s\n", name, display, label, ui.BoldRed(row.Error.Error()))
 			continue
 		}
-		fmt.Printf("  %s %s %s\n", name, display, label)
+		// Non-error rows have nothing after the label, so skip the padding
+		// that would otherwise leave trailing whitespace.
+		fmt.Printf("  %s %s %s\n", name, display, diffLabel(row.Label, 0))
 	}
 }
 
@@ -152,17 +160,24 @@ func styledDiffDisplay(row diffRow, width int) string {
 }
 
 func diffLabel(label string, width int) string {
+	pad := func(marker, bracketed string) string {
+		n := width - len(bracketed)
+		if n < 0 {
+			n = 0
+		}
+		return marker + strings.Repeat(" ", n)
+	}
 	switch label {
 	case "ok":
-		return ui.DiffOK() + strings.Repeat(" ", width-len("[ok]"))
+		return pad(ui.DiffOK(), "[ok]")
 	case "create":
-		return ui.DiffCreate() + strings.Repeat(" ", width-len("[create]"))
+		return pad(ui.DiffCreate(), "[create]")
 	case "conflict":
-		return ui.DiffConflict() + strings.Repeat(" ", width-len("[conflict]"))
+		return pad(ui.DiffConflict(), "[conflict]")
 	case "replace":
-		return ui.DiffReplace() + strings.Repeat(" ", width-len("[replace]"))
+		return pad(ui.DiffReplace(), "[replace]")
 	default:
-		return ui.DiffError() + strings.Repeat(" ", width-len("[error]"))
+		return pad(ui.DiffError(), "[error]")
 	}
 }
 

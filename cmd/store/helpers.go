@@ -189,20 +189,48 @@ func buildRenderContext(root string, cfg *config.Config, names ...string) (*stor
 }
 
 // resolveTargetPath normalizes a target path for storage: expands ~ prefix,
-// resolves relative paths to absolute. Tilde-prefixed paths are kept as-is
-// for portability across machines.
+// resolves relative paths to absolute, and rewrites any path that resolves
+// under $HOME back into a ~-prefixed form so config stays portable.
+//
+// The rewrite matters because the shell expands unquoted ~ before the
+// command sees it: `store add nvim ~/.config/foo` arrives as
+// `/home/alice/.config/foo`, which would otherwise be committed verbatim
+// and break on a teammate's machine.
 func resolveTargetPath(target string) (string, error) {
 	expanded, err := config.ExpandHome(target)
 	if err != nil {
 		return "", err
 	}
+	abs := expanded
 	if !filepath.IsAbs(expanded) {
-		target, err = filepath.Abs(target)
+		abs, err = filepath.Abs(target)
 		if err != nil {
 			return "", fmt.Errorf("failed to resolve target path: %w", err)
 		}
 	}
-	return target, nil
+	// If the user's original input already starts with ~, keep it — that's
+	// the authoritative portable form.
+	if strings.HasPrefix(target, "~") {
+		return target, nil
+	}
+	return portableHome(abs), nil
+}
+
+// portableHome rewrites an absolute path under $HOME to use ~ prefix so
+// stored config is portable across machines. Returns p unchanged if $HOME
+// is unknown or p is outside $HOME.
+func portableHome(p string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return p
+	}
+	if p == home {
+		return "~"
+	}
+	if strings.HasPrefix(p, home+string(filepath.Separator)) {
+		return "~" + p[len(home):]
+	}
+	return p
 }
 
 // expandTargetPath fully expands a target path to an absolute path for comparison.
@@ -285,6 +313,18 @@ func styledCount(n int, singular, plural string) string {
 		label = singular
 	}
 	return ui.Bold(strconv.Itoa(n)) + " " + label
+}
+
+// printNoStoresMessage prints a consistent "no stores configured" notice
+// with a hint at what to run next. Used by list / status / diff / apply
+// when cfg.Stores is empty, so the empty experience is the same across
+// every read-only (or almost-read-only) command.
+func printNoStoresMessage() {
+	fmt.Println(ui.Dim("No stores configured yet. Try ") +
+		ui.Bold("store adopt <path>") +
+		ui.Dim(" or ") +
+		ui.Bold("store add <name> <target>") +
+		ui.Dim("."))
 }
 
 // promptYesNo prints a prompt and reads a y/N response from stdin. Default is no.
