@@ -40,6 +40,7 @@ func newRootCmd() *cobra.Command {
 		newVersionCmd(),
 		newTargetCmd(),
 		newSecretCmd(),
+		newTUICmd(),
 		newCompletionCmd(rootCmd),
 	)
 
