@@ -1,4 +1,4 @@
-module github.com/cushycush/store
+module github.com/cushycush/store/v2
 
 go 1.26.1
 
