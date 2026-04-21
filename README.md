@@ -114,7 +114,7 @@ Download the archive for your OS and architecture from the [releases page](https
 ### go install
 
 ```sh
-$ go install github.com/cushycush/store/cmd/store@latest
+$ go install github.com/cushycush/store/v2/cmd/store@latest
 ```
 
 ### Build from source
