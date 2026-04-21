@@ -10,12 +10,12 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/platform"
-	"github.com/cushycush/store/internal/render"
-	"github.com/cushycush/store/internal/secrets"
-	storeops "github.com/cushycush/store/internal/store"
-	"github.com/cushycush/store/internal/ui"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/platform"
+	"github.com/cushycush/store/v2/internal/render"
+	"github.com/cushycush/store/v2/internal/secrets"
+	storeops "github.com/cushycush/store/v2/internal/store"
+	"github.com/cushycush/store/v2/internal/ui"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )

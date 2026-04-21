@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/tui"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/tui"
 	"github.com/spf13/cobra"
 )
 

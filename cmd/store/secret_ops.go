@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/secrets"
-	"github.com/cushycush/store/internal/ui"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/secrets"
+	"github.com/cushycush/store/v2/internal/ui"
 	"github.com/spf13/cobra"
 )
 

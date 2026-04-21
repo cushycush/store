@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/cushycush/store/internal/doctor"
+	"github.com/cushycush/store/v2/internal/doctor"
 )
 
 // Doctor is the diagnostics overlay. Re-running is a single `r` keystroke.

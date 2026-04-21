@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/doctor"
-	"github.com/cushycush/store/internal/importer"
-	"github.com/cushycush/store/internal/linker"
-	storeops "github.com/cushycush/store/internal/store"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/doctor"
+	"github.com/cushycush/store/v2/internal/importer"
+	"github.com/cushycush/store/v2/internal/linker"
+	storeops "github.com/cushycush/store/v2/internal/store"
 )
 
 // OpResult is the message posted when a background op finishes.

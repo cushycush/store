@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/linker"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/linker"
 )
 
 // ConflictInfo describes a file or directory that conflicts with a store symlink.

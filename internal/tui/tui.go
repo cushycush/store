@@ -10,10 +10,10 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/linker"
-	"github.com/cushycush/store/internal/platform"
-	storeops "github.com/cushycush/store/internal/store"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/linker"
+	"github.com/cushycush/store/v2/internal/platform"
+	storeops "github.com/cushycush/store/v2/internal/store"
 )
 
 // OverlayKind identifies the active overlay, if any.

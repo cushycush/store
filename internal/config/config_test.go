@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cushycush/store/internal/platform"
+	"github.com/cushycush/store/v2/internal/platform"
 )
 
 func TestTargetEntryHasFileMode(t *testing.T) {

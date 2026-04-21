@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/linker"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/linker"
 )
 
 func createStore(t *testing.T, root, name string, files map[string]string) string {

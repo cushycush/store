@@ -7,9 +7,9 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/linker"
-	"github.com/cushycush/store/internal/platform"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/linker"
+	"github.com/cushycush/store/v2/internal/platform"
 )
 
 func TestCheckSymlinkCapabilityNonWindows(t *testing.T) {

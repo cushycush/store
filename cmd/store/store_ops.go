@@ -8,12 +8,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/hooks"
-	"github.com/cushycush/store/internal/linker"
-	"github.com/cushycush/store/internal/platform"
-	storeops "github.com/cushycush/store/internal/store"
-	"github.com/cushycush/store/internal/ui"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/hooks"
+	"github.com/cushycush/store/v2/internal/linker"
+	"github.com/cushycush/store/v2/internal/platform"
+	storeops "github.com/cushycush/store/v2/internal/store"
+	"github.com/cushycush/store/v2/internal/ui"
 	"github.com/spf13/cobra"
 )
 

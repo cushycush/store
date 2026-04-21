@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/cushycush/store/internal/secrets"
+	"github.com/cushycush/store/v2/internal/secrets"
 )
 
 type secretsPhase int

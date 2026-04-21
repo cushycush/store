@@ -7,9 +7,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/platform"
-	storeops "github.com/cushycush/store/internal/store"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/platform"
+	storeops "github.com/cushycush/store/v2/internal/store"
 )
 
 func TestFilterStoresByPlatform(t *testing.T) {

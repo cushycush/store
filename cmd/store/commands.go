@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cushycush/store/internal/ui"
+	"github.com/cushycush/store/v2/internal/ui"
 	"github.com/spf13/cobra"
 )
 

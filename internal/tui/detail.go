@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/linker"
-	"github.com/cushycush/store/internal/platform"
-	"github.com/cushycush/store/internal/render"
-	storeops "github.com/cushycush/store/internal/store"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/linker"
+	"github.com/cushycush/store/v2/internal/platform"
+	"github.com/cushycush/store/v2/internal/render"
+	storeops "github.com/cushycush/store/v2/internal/store"
 )
 
 // Detail holds per-store detail state: which targets are expanded, and

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cushycush/store/internal/doctor"
-	"github.com/cushycush/store/internal/linker"
-	storeops "github.com/cushycush/store/internal/store"
-	"github.com/cushycush/store/internal/ui"
+	"github.com/cushycush/store/v2/internal/doctor"
+	"github.com/cushycush/store/v2/internal/linker"
+	storeops "github.com/cushycush/store/v2/internal/store"
+	"github.com/cushycush/store/v2/internal/ui"
 	"github.com/spf13/cobra"
 )
 

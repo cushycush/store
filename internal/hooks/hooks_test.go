@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/platform"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/platform"
 )
 
 func TestRunEntryNilOrEmpty(t *testing.T) {

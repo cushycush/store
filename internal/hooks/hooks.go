@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/platform"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/platform"
 )
 
 // RunGlobal executes a global hook script at .store/hooks/<hookName> if it

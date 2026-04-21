@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/cushycush/store/internal/config"
+	"github.com/cushycush/store/v2/internal/config"
 )
 
 func TestScanWholeDirectorySymlink(t *testing.T) {

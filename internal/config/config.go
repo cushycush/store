@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cushycush/store/internal/platform"
+	"github.com/cushycush/store/v2/internal/platform"
 	"gopkg.in/yaml.v3"
 )
 

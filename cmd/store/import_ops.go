@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/importer"
-	"github.com/cushycush/store/internal/ui"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/importer"
+	"github.com/cushycush/store/v2/internal/ui"
 	"github.com/spf13/cobra"
 )
 

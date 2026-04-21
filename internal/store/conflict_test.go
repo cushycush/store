@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cushycush/store/internal/config"
+	"github.com/cushycush/store/v2/internal/config"
 )
 
 func TestCollectTargetConflicts(t *testing.T) {

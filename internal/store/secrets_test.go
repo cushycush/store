@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/render"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/render"
 )
 
 const (

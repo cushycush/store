@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/cushycush/store/internal/config"
+	"github.com/cushycush/store/v2/internal/config"
 )
 
 // TargetAction tags a per-target action picked from the target submenu.

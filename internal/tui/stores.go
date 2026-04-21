@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/cushycush/store/internal/config"
-	"github.com/cushycush/store/internal/linker"
-	storeops "github.com/cushycush/store/internal/store"
+	"github.com/cushycush/store/v2/internal/config"
+	"github.com/cushycush/store/v2/internal/linker"
+	storeops "github.com/cushycush/store/v2/internal/store"
 )
 
 // Row is a single store row in the ledger.

@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 
-	"github.com/cushycush/store/internal/config"
-	storeops "github.com/cushycush/store/internal/store"
-	"github.com/cushycush/store/internal/ui"
+	"github.com/cushycush/store/v2/internal/config"
+	storeops "github.com/cushycush/store/v2/internal/store"
+	"github.com/cushycush/store/v2/internal/ui"
 )
 
 // printConflicts lists conflicts and what will happen to each file.

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cushycush/store/internal/config"
+	"github.com/cushycush/store/v2/internal/config"
 )
 
 // DiscoveredLink describes an existing symlink that points into the repo.
