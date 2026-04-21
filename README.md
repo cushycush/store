@@ -1,5 +1,11 @@
 ![store screenshot](docs/hero.png)
 
+[![test](https://img.shields.io/github/actions/workflow/status/cushycush/store/test.yml?branch=main&style=for-the-badge&label=test&color=E89A3A&labelColor=1c1c1c&logo=githubactions&logoColor=E89A3A)](https://github.com/cushycush/store/actions/workflows/test.yml)
+[![release](https://img.shields.io/github/v/release/cushycush/store?style=for-the-badge&color=E89A3A&labelColor=1c1c1c&logo=github&logoColor=E89A3A)](https://github.com/cushycush/store/releases)
+[![AUR](https://img.shields.io/aur/version/store-bin?style=for-the-badge&label=aur&color=E89A3A&labelColor=1c1c1c&logo=archlinux&logoColor=E89A3A)](https://aur.archlinux.org/packages/store-bin)
+[![Go Reference](https://img.shields.io/badge/go.dev-reference-E89A3A?style=for-the-badge&labelColor=1c1c1c&logo=go&logoColor=E89A3A)](https://pkg.go.dev/github.com/cushycush/store/v2)
+[![license](https://img.shields.io/github/license/cushycush/store?style=for-the-badge&color=E89A3A&labelColor=1c1c1c&logo=opensourceinitiative&logoColor=E89A3A)](LICENSE)
+
 `store` is a dotfile manager for Linux, macOS, and Windows. You keep your config files in one git repo; `store` reads a single YAML file and creates the symlinks that place each file where the relevant program expects to find it — `~/.zshrc`, `~/.config/nvim`, and so on. Unlike GNU Stow, your repo directory structure does not have to mirror your home directory — target paths are declared explicitly. One repo, one config file, one command per machine.
 
 > Bare `store` is non-destructive — it prints help. `store apply` is the verb that reconciles symlinks. `store tui` opens an interactive dashboard.
