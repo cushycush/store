@@ -12,6 +12,19 @@
 
 > **Upgrading from 1.x?** See [MIGRATING.md](MIGRATING.md) — the only breaking change is that bare `store` now prints help instead of reconciling; run `store apply` to reconcile.
 
+## Companion: stock
+
+[`stock`](https://github.com/cushycush/stock) installs the packages, tools, and runtimes your dotfiles depend on. Same `.store/` directory, same `when:` platform filters, same hook env contract — declared in `.store/packages.yaml` instead of `config.yaml`. Pair metaphor: you stock a store with inventory.
+
+Install `stock` via the same channels `store` uses (AUR, Nix, `go install`, prebuilt binaries) and then invoke it as either a standalone binary or through `store`'s git-style dispatch:
+
+```sh
+stock doctor            # direct
+store stock doctor      # delegated by store if `stock` is on $PATH
+```
+
+`store`'s TUI header picks up a dim `stock` signpost when the binary is available.
+
 ## Table of Contents
 
 - [Overview](#overview)

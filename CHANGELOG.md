@@ -4,6 +4,19 @@ All notable changes to `store` are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-04-22
+
+### Added
+
+- **Git-style subcommand dispatch.** `store <sub>` now delegates to an
+  external binary when `<sub>` isn't one of store's own commands. Two
+  resolution paths, in order: `store-<sub>` on `$PATH` (strict git
+  convention), then — for known companions like
+  [`stock`](https://github.com/cushycush/stock) — the bare binary name.
+  That means `store stock doctor`, `store stock install`, etc. all work
+  out of the box once `stock` is on your `$PATH`, without a symlink shim.
+  Unknown args still fall through to cobra's "unknown command" message.
+
 ## [2.3.0] - 2026-04-22
 
 ### Added
