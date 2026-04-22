@@ -4,6 +4,23 @@ All notable changes to `store` are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-04-22
+
+### Added
+
+- `when:` filters now accept either a YAML scalar or a list in any string
+  field. `os: linux` and `os: [linux, darwin]` are both valid; existing
+  scalar configs are unchanged.
+
+### Changed
+
+- Platform detection, `when:` matching, `FindRoot`, `ExpandHome`, and the
+  `STORE_*` hook env contract moved into a new shared module,
+  [`github.com/cushycush/store-core`](https://github.com/cushycush/store-core).
+  The `store` binary's behavior is unchanged; the split exists so the
+  companion [`stock`](https://github.com/cushycush/stock) package-installer
+  can consume the same pieces without vendoring them.
+
 ## [2.0.0] - 2026-04-20
 
 ### Breaking
