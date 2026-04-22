@@ -44,6 +44,7 @@ type App struct {
 	stores   *Stores
 	detail   *Detail
 	activity *Activity
+	hasStock bool // stock binary discovered on $PATH at startup
 
 	keys Keymap
 
@@ -87,6 +88,7 @@ func New(root, version string, cfg *config.Config) *App {
 	if cfg == nil {
 		cfg = &config.Config{Stores: map[string]config.StoreEntry{}}
 	}
+	_, stockErr := exec.LookPath("stock")
 	a := &App{
 		root:       root,
 		version:    version,
@@ -97,6 +99,7 @@ func New(root, version string, cfg *config.Config) *App {
 		detail:     NewDetail(),
 		activity:   NewActivity(200),
 		uninit:     !config.Exists(root),
+		hasStock:   stockErr == nil,
 		freshMarks: map[string]time.Time{},
 		startedAt:  time.Now(),
 	}
@@ -964,8 +967,15 @@ func (a *App) renderHeader(width int) string {
 	plat := StyleDim.Render(a.plat.OS + "/" + a.plat.Arch)
 	heart := a.renderHeartbeat()
 
+	// When stock is on $PATH, add a quiet signpost so users know the
+	// companion tool exists without the TUI having to own its UI.
+	var stockHint string
+	if a.hasStock {
+		stockHint = StyleDim.Render("   ") + StyleEmberDim.Render("stock")
+	}
+
 	left := "  " + brand
-	right := root + StyleDim.Render("   ") + plat + StyleDim.Render("   ") + heart + " "
+	right := root + StyleDim.Render("   ") + plat + stockHint + StyleDim.Render("   ") + heart + " "
 	used := lipgloss.Width(left) + lipgloss.Width(right)
 	fill := width - used
 	if fill < 1 {

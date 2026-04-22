@@ -4,6 +4,25 @@ All notable changes to `store` are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-04-22
+
+### Added
+
+- The TUI header now shows a quiet `stock` signpost when the companion
+  [`stock`](https://github.com/cushycush/stock) package-installer is on
+  `$PATH`. It is rendered in the low-intensity ember tint so it reads as
+  "available" without competing with the active store view. No coupling to
+  stock's internal state — detection is a single `exec.LookPath` at app
+  startup.
+
+### Changed
+
+- `internal/ui` now delegates its generic styling primitives (colors,
+  bold/dim, doctor chips, prompts) to `store-core/ui` so stock can pick up
+  the same CLI look. Store-specific chips (`StatusLinked`, `DiffCreate`,
+  `StoreName`, …) stay in `store/internal/ui`. Import paths are unchanged
+  for existing call sites.
+
 ## [2.1.0] - 2026-04-22
 
 ### Added
