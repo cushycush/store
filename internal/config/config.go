@@ -5,14 +5,40 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cushycush/store/v2/internal/platform"
+	core "github.com/cushycush/store-core/config"
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	ConfigDir  = ".store"
-	ConfigFile = "config.yaml"
+// ConfigDir is the .store directory name, sourced from store-core.
+const ConfigDir = core.ConfigDir
+
+// ConfigFile is store's per-repo config filename.
+const ConfigFile = "config.yaml"
+
+// WhenClause and Strings are re-exported so callers within store keep their
+// existing import path. WhenClause's fields are scalar-or-list slices; write
+// either `os: linux` or `os: [linux, darwin]` in YAML.
+type (
+	WhenClause = core.WhenClause
+	Strings    = core.Strings
 )
+
+// ExpandHome expands a leading ~ to the user's home directory.
+func ExpandHome(path string) (string, error) { return core.ExpandHome(path) }
+
+// FindRoot walks up from the current working directory to locate the repo
+// root (the directory containing .store/).
+func FindRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get working directory: %w", err)
+	}
+	root, err := core.FindRoot(dir)
+	if err != nil {
+		return "", fmt.Errorf("%w (run 'store init' first)", err)
+	}
+	return root, nil
+}
 
 // TargetEntry represents a single target within a store.
 type TargetEntry struct {
@@ -26,47 +52,6 @@ type TargetEntry struct {
 type HookEntry struct {
 	Pre  string `yaml:"pre,omitempty"`
 	Post string `yaml:"post,omitempty"`
-}
-
-// WhenClause defines platform conditions for whether a store entry applies.
-type WhenClause struct {
-	OS            string `yaml:"os,omitempty"`
-	Arch          string `yaml:"arch,omitempty"`
-	Distro        string `yaml:"distro,omitempty"`
-	DistroVersion string `yaml:"distro_version,omitempty"`
-	Hostname      string `yaml:"hostname,omitempty"`
-	Shell         string `yaml:"shell,omitempty"`
-	WSL           *bool  `yaml:"wsl,omitempty"`
-}
-
-// Matches returns true if all specified fields match the given platform info.
-// A nil WhenClause always matches. Empty fields are ignored.
-func (w *WhenClause) Matches(info platform.Info) bool {
-	if w == nil {
-		return true
-	}
-	if w.OS != "" && w.OS != info.OS {
-		return false
-	}
-	if w.Arch != "" && w.Arch != info.Arch {
-		return false
-	}
-	if w.Distro != "" && w.Distro != info.Distro {
-		return false
-	}
-	if w.DistroVersion != "" && w.DistroVersion != info.DistroVersion {
-		return false
-	}
-	if w.Hostname != "" && w.Hostname != info.Hostname {
-		return false
-	}
-	if w.Shell != "" && w.Shell != info.Shell {
-		return false
-	}
-	if w.WSL != nil && *w.WSL != info.WSL {
-		return false
-	}
-	return true
 }
 
 // HasFileMode returns true if the target specifies individual files or patterns
@@ -238,53 +223,4 @@ func Save(root string, cfg *Config) error {
 func Exists(root string) bool {
 	_, err := os.Stat(ConfigPath(root))
 	return err == nil
-}
-
-// ExpandHome expands a leading ~ in a path to the user's home directory.
-func ExpandHome(path string) (string, error) {
-	if len(path) == 0 {
-		return path, nil
-	}
-
-	if path[0] != '~' {
-		return path, nil
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	if len(path) == 1 {
-		return home, nil
-	}
-
-	if path[1] == '/' {
-		return filepath.Join(home, path[2:]), nil
-	}
-
-	return path, nil
-}
-
-// FindRoot walks up from the current directory to find the repo root
-// (the directory containing .store/).
-func FindRoot() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("failed to get working directory: %w", err)
-	}
-
-	for {
-		if _, err := os.Stat(filepath.Join(dir, ConfigDir)); err == nil {
-			return dir, nil
-		}
-
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-
-	return "", fmt.Errorf("no %s directory found (run 'store init' first)", ConfigDir)
 }

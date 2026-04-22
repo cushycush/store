@@ -320,31 +320,7 @@ func platformSkipMessage(name string, when *config.WhenClause, info platform.Inf
 }
 
 func firstPlatformMismatch(when *config.WhenClause, info platform.Info) (field, want, current string) {
-	if when == nil {
-		return "", "", ""
-	}
-	if when.OS != "" && when.OS != info.OS {
-		return "os", when.OS, info.OS
-	}
-	if when.Arch != "" && when.Arch != info.Arch {
-		return "arch", when.Arch, info.Arch
-	}
-	if when.Distro != "" && when.Distro != info.Distro {
-		return "distro", when.Distro, info.Distro
-	}
-	if when.DistroVersion != "" && when.DistroVersion != info.DistroVersion {
-		return "distro_version", when.DistroVersion, info.DistroVersion
-	}
-	if when.Hostname != "" && when.Hostname != info.Hostname {
-		return "hostname", when.Hostname, info.Hostname
-	}
-	if when.Shell != "" && when.Shell != info.Shell {
-		return "shell", when.Shell, info.Shell
-	}
-	if when.WSL != nil && *when.WSL != info.WSL {
-		return "wsl", fmt.Sprintf("%t", *when.WSL), fmt.Sprintf("%t", info.WSL)
-	}
-	return "", "", ""
+	return when.FirstMismatch(info)
 }
 
 func sortedStoreNames(cfg *config.Config) []string {

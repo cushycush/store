@@ -8,8 +8,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/cushycush/store/v2/internal/platform"
 )
 
 func TestTargetEntryHasFileMode(t *testing.T) {
@@ -176,105 +174,6 @@ func TestStoreEntryResolvedTargets(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.entry.ResolvedTargets(); !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("ResolvedTargets() = %#v, want %#v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestWhenClauseMatches(t *testing.T) {
-	info := platform.Info{
-		OS:            "linux",
-		Arch:          "amd64",
-		Distro:        "ubuntu",
-		DistroVersion: "24.04",
-		Hostname:      "workstation",
-		Shell:         "zsh",
-		WSL:           true,
-	}
-
-	falseValue := false
-	trueValue := true
-
-	tests := []struct {
-		name string
-		info platform.Info
-		when *WhenClause
-		want bool
-	}{
-		{
-			name: "nil when clause matches everything",
-			info: info,
-			when: nil,
-			want: true,
-		},
-		{
-			name: "empty when clause matches everything",
-			info: info,
-			when: &WhenClause{},
-			want: true,
-		},
-		{
-			name: "os match",
-			info: info,
-			when: &WhenClause{OS: "linux"},
-			want: true,
-		},
-		{
-			name: "os mismatch",
-			info: info,
-			when: &WhenClause{OS: "darwin"},
-			want: false,
-		},
-		{
-			name: "multiple fields all match",
-			info: info,
-			when: &WhenClause{OS: "linux", Arch: "amd64", Distro: "ubuntu"},
-			want: true,
-		},
-		{
-			name: "one field mismatches",
-			info: info,
-			when: &WhenClause{OS: "linux", Arch: "arm64", Distro: "ubuntu"},
-			want: false,
-		},
-		{
-			name: "wsl true matches",
-			info: info,
-			when: &WhenClause{WSL: &trueValue},
-			want: true,
-		},
-		{
-			name: "wsl false matches",
-			info: platform.Info{WSL: false},
-			when: &WhenClause{WSL: &falseValue},
-			want: true,
-		},
-		{
-			name: "wsl nil matches any",
-			info: info,
-			when: &WhenClause{OS: "linux", WSL: nil},
-			want: true,
-		},
-		{
-			name: "all fields set and matching",
-			info: info,
-			when: &WhenClause{
-				OS:            "linux",
-				Arch:          "amd64",
-				Distro:        "ubuntu",
-				DistroVersion: "24.04",
-				Hostname:      "workstation",
-				Shell:         "zsh",
-				WSL:           &trueValue,
-			},
-			want: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.when.Matches(tt.info); got != tt.want {
-				t.Fatalf("Matches() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -481,7 +380,7 @@ func TestConfigLoadSaveRoundTrip(t *testing.T) {
 				Target: "~/.config/git",
 				Ignore: []string{"*.bak"},
 				Hooks:  &HookEntry{Post: "git config --global include.path ~/.config/git/config"},
-				When:   &WhenClause{OS: "linux", Shell: "zsh"},
+				When:   &WhenClause{OS: Strings{"linux"}, Shell: Strings{"zsh"}},
 			},
 			"shells": {
 				Targets: []TargetEntry{

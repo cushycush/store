@@ -17,10 +17,10 @@ func TestFilterStoresByPlatform(t *testing.T) {
 	stores := map[string]config.StoreEntry{
 		"always": {},
 		"linux": {
-			When: &config.WhenClause{OS: "linux"},
+			When: &config.WhenClause{OS: config.Strings{"linux"}},
 		},
 		"darwin": {
-			When: &config.WhenClause{OS: "darwin"},
+			When: &config.WhenClause{OS: config.Strings{"darwin"}},
 		},
 		"not-wsl": {
 			When: &config.WhenClause{WSL: &falseValue},

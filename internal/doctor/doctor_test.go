@@ -147,7 +147,7 @@ func TestCheckPlatformSkippedStore(t *testing.T) {
 	writeConfig(t, root, map[string]config.StoreEntry{
 		"linux-only": {
 			Target: filepath.Join(targetRoot, "linux-only"),
-			When:   &config.WhenClause{OS: platformMismatchOS()},
+			When:   &config.WhenClause{OS: config.Strings{platformMismatchOS()}},
 		},
 	})
 	writeFile(t, filepath.Join(root, "linux-only", "config.txt"), "ok\n")
