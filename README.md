@@ -113,6 +113,22 @@ $ yay -S store
 $ yay -S store-git
 ```
 
+### Nix (flake)
+
+```sh
+# run once
+$ nix run github:cushycush/store -- --help
+
+# install into your profile
+$ nix profile install github:cushycush/store
+```
+
+The flake also exposes a dev shell with Go and gopls pinned to the versions CI uses:
+
+```sh
+$ nix develop github:cushycush/store
+```
+
 ### Prebuilt binaries (Linux · macOS · Windows)
 
 Download the archive for your OS and architecture from the [releases page](https://github.com/cushycush/store/releases) and drop `store` (or `store.exe`) onto your `PATH`.
