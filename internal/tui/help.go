@@ -35,11 +35,13 @@ func (o *Help) View() string {
 		{"move", []row{
 			{"j · k", "up and down"},
 			{"g · G", "top and bottom"},
-			{"esc · h", "back · close overlay"},
+			{"l · →", "expand group · drill into store"},
+			{"h · ←", "collapse group · jump to parent"},
+			{"esc", "back · clear filter · close overlay"},
 		}},
 		{"stores", []row{
-			{"enter", "actions for the selected store"},
-			{"space", "link if missing, unlink if linked"},
+			{"enter", "actions for the selected store · toggle group"},
+			{"space", "link if missing, unlink if linked · toggle group"},
 			{"d", "diff — preview to the activity log"},
 			{"A", "apply all (reconcile every store)"},
 			{"R", "remove the selected store (confirmed)"},

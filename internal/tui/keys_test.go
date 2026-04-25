@@ -7,8 +7,8 @@ import (
 )
 
 // TestKeymapNoCollisions verifies that no two distinct top-level bindings
-// share a key trigger. `j/k/g/G/h` are reserved for movement and cannot be
-// bound to actions. Overlay-local keys (e.g. `a` for add secret) are
+// share a key trigger. `j/k/g/G/h/l` are reserved for movement and cannot
+// be bound to actions. Overlay-local keys (e.g. `a` for add secret) are
 // scoped and don't appear in the global keymap.
 func TestKeymapNoCollisions(t *testing.T) {
 	km := DefaultKeymap()
@@ -19,6 +19,7 @@ func TestKeymapNoCollisions(t *testing.T) {
 		"Filter": km.Filter, "Palette": km.Palette, "Help": km.Help,
 		"Activity": km.Activity, "Refresh": km.Refresh, "Quit": km.Quit,
 		"ApplyAll": km.ApplyAll, "Diff": km.Diff, "Remove": km.Remove,
+		"Expand": km.Expand, "Collapse": km.Collapse,
 	}
 	for label, b := range bindings {
 		for _, k := range b.Keys() {
@@ -38,10 +39,13 @@ func TestKeymapNoCollisions(t *testing.T) {
 
 // TestVimMovementNotOverloaded asserts the design principle: h/j/k/l/g/G
 // are reserved for movement and are never bound to mutating actions.
+// Tree expand/collapse counts as movement (file-tree convention) so `l`
+// and `h` aliases Back/Expand which is consistent with that.
 func TestVimMovementNotOverloaded(t *testing.T) {
 	km := DefaultKeymap()
-	forbidden := map[string]bool{"j": true, "k": true, "g": true, "G": true, "l": true}
-	// `h` aliases Back, which is intentional (close overlay in single-column).
+	forbidden := map[string]bool{"j": true, "k": true, "g": true, "G": true}
+	// `h` aliases Back (and doubles as collapse-or-jump-to-parent in the
+	// tree view); `l` aliases Expand which is movement, not mutation.
 	actions := []key.Binding{
 		km.Enter, km.Space, km.Filter, km.Palette, km.Help,
 		km.Activity, km.Refresh, km.ApplyAll, km.Diff, km.Remove,
