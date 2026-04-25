@@ -4,9 +4,10 @@ Capture the store TUI as a PNG for the README hero image.
 
 Spawns `store tui` inside an ephemeral HOME where the ledger lands in a
 known mixed state (linked/partial/missing/conflict + a multi-target store
-with templates and hooks), presses `j j` so the cursor lands on `shells`,
-reads the final frame through a pty, parses it with pyte, and renders it
-to a PNG with Pillow.
+with templates and hooks, organized into nested groups), drives a short
+key sequence so the frame shows one expanded group alongside collapsed
+ones with the cursor on `shells`, reads the final frame through a pty,
+parses it with pyte, and renders it to a PNG with Pillow.
 
 Usage:
   docs/hero-demo/snapshot.py [--store PATH] [--out PATH] [--cols N] [--rows N]
@@ -72,12 +73,14 @@ def setup_stage(stage: Path) -> tuple[Path, Path, Path]:
     dotfiles = home / "dotfiles"
     dotfiles.symlink_to(HERE)
 
-    (home / ".config/git").symlink_to(dotfiles / "git")
-    (home / ".config/nvim").symlink_to(dotfiles / "nvim")
+    (home / ".config/nvim").symlink_to(dotfiles / "editors/nvim")
+    (home / ".config/ghostty").symlink_to(dotfiles / "terminals/ghostty")
+    (home / ".config/git").symlink_to(dotfiles / "tools/git")
+    (home / ".config/lazygit").symlink_to(dotfiles / "tools/lazygit")
     (home / ".zshrc").symlink_to(dotfiles / "shells/.zshrc")
     (home / ".bashrc").symlink_to(dotfiles / "shells/.bashrc")
     (home / ".config/fish/config.fish").symlink_to(dotfiles / "shells/config.fish")
-    # aliases.fish and nushell/config.nu intentionally missing.
+    # aliases.fish, nushell/config.nu, and terminals/tmux intentionally missing.
 
     # work: a real directory at the target path produces a conflict.
     notes = home / "work/notes"
@@ -139,14 +142,17 @@ def capture_frame(store_bin: str, cols: int, rows: int) -> pyte.Screen:
         # out is slower but reliable — one extra 5s at snapshot time is
         # fine for a script no-one runs at interactive latency.
         drain(fd, stream, 6.5)
-        # Move cursor to `shells` (third store alphabetically: git, nvim,
-        # shells). Send the j-presses one at a time with a short gap so
-        # bubbletea's input reader sees them as two distinct key events
-        # and the row-fresh animation advances between them.
-        os.write(fd, b"j")
-        time.sleep(0.25)
-        drain(fd, stream, 0.25)
-        os.write(fd, b"j")
+        # Default ledger order (collapsed): editors, shells, terminals,
+        # tools, work. Step the cursor down to `terminals`, expand it with
+        # `l` so the snapshot shows both a `−` (open) and `+` (collapsed)
+        # group glyph in the same frame, then back up to `shells` for the
+        # detail pane. Each press goes one at a time with a short gap so
+        # bubbletea sees them as distinct key events and the row-fresh
+        # animation advances between them.
+        for key in (b"j", b"j", b"l", b"k"):
+            os.write(fd, key)
+            time.sleep(0.25)
+            drain(fd, stream, 0.25)
         # Let the reveal + flash animations settle and the heartbeat tick.
         drain(fd, stream, 1.5)
     finally:

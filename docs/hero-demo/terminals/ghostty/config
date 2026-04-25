@@ -1,0 +1,4 @@
+font-family = "Iosevka"
+font-size = 13
+theme = "catppuccin-mocha"
+background-opacity = 0.95

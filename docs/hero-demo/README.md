@@ -8,9 +8,17 @@ README screenshot — not part of the `store` binary.
 A small dotfiles repo laid out to exercise every feature the hero shot
 needs in a single TUI frame:
 
-- **Mixed ledger states** — 2 linked, 1 partial, 1 missing, 1 conflict.
-- **Multi-target store** (`shells`) with per-target link counts that
-  come out as `2/2 linked`, `1/2 partial`, `0/1 missing`.
+- **Nested groups** organized as `editors/`, `terminals/`, `tools/`, so
+  the ledger has a real tree to render. The hero frame catches one open
+  group (`terminals`) alongside two collapsed groups (`editors`, `tools`)
+  so both the `+` and `−` glyphs are visible.
+- **Mixed ledger states** across the leaves: 4 linked, 1 partial, 1
+  missing, 1 conflict. Group rows aggregate worst-child state, so
+  `terminals` reports `partial` (one linked, one missing) while
+  `editors` and `tools` show `linked`.
+- **Multi-target store** (`shells`) sitting at the top level so its
+  detail pane is what you see when the cursor lands on it. Per-target
+  link counts come out as `2/2 linked`, `1/2 partial`, `0/1 missing`.
 - **Hooks block** on the selected store (`pre` + `post`).
 - **Platform filter** (`when: os: linux`) so the `filter matches` line
   appears in the detail pane.
@@ -23,18 +31,23 @@ needs in a single TUI frame:
 
 ```text
 hero-demo/
-  .store/config.yaml       # the demo's config, committed to the repo
-  git/                     # linked (whole-directory)
-  nvim/                    # linked (whole-directory)
-  shells/                  # multi-target; partial
-    .zshrc .bashrc         # targeted at ~
-    config.fish            # targeted at ~/.config/fish
-    aliases.fish           #   (intentionally not linked in the demo)
-    config.nu              # targeted at ~/.config/nushell (not linked)
-  tmux/                    # missing (no symlinks created)
-  work/                    # conflict (real dir at target path)
-  capture.sh               # launch the live TUI in the demo state
-  snapshot.py              # regenerate docs/hero.png
+  .store/config.yaml             # nested config, committed to the repo
+  editors/
+    nvim/                        # linked (whole-directory)
+  shells/                        # multi-target; partial
+    .zshrc .bashrc               # targeted at ~
+    config.fish                  # targeted at ~/.config/fish
+    aliases.fish                 #   (intentionally not linked)
+    config.nu                    # targeted at ~/.config/nushell (not linked)
+  terminals/
+    ghostty/                     # linked (whole-directory)
+    tmux/                        # missing (no symlinks created)
+  tools/
+    git/                         # linked (whole-directory)
+    lazygit/                     # linked (whole-directory)
+  work/                          # conflict (real dir at target path)
+  capture.sh                     # launch the live TUI in the demo state
+  snapshot.py                    # regenerate docs/hero.png
 ```
 
 ## See the demo live
@@ -49,8 +62,9 @@ symlinks, missing targets, and a conflicting directory that the hero
 image shows, then exec's `store tui` inside it. Your real home is never
 touched. Press `q` to quit.
 
-Inside the TUI, press `j` twice — the cursor lands on `shells` and the
-detail pane matches `docs/hero.png`.
+Inside the TUI, press `j j l k`. The cursor walks down to the
+`terminals` group, expands it (`l`), and steps back up to `shells`. That
+matches the frame in `docs/hero.png`.
 
 ## Regenerate the PNG
 
@@ -60,9 +74,10 @@ $ python3 -m venv .venv && .venv/bin/pip install pyte pillow
 $ .venv/bin/python snapshot.py --store ./store --out ../hero.png
 ```
 
-The script spawns `store tui` in a pty, feeds `jj` after the initial
-render, captures the final frame with [pyte](https://github.com/selectel/pyte),
-and rasterises it with Pillow using a palette pulled from
+The script spawns `store tui` in a pty, drives `j j l k` after the initial
+render to expand `terminals` and land the cursor on `shells`, captures
+the final frame with [pyte](https://github.com/selectel/pyte), and
+rasterises it with Pillow using a palette pulled from
 `internal/tui/theme.go`.
 
 Flags:

@@ -3,10 +3,9 @@ vars:
   email: you@example.com
 
 stores:
-  git:
-    target: "~/.config/git"
-  nvim:
-    target: "~/.config/nvim"
+  editors:
+    nvim:
+      target: "~/.config/nvim"
   shells:
     targets:
       - target: "~"
@@ -25,8 +24,16 @@ stores:
       post: "exec $SHELL -l"
     when:
       os: linux
-  tmux:
-    target: "~/.config/tmux"
+  terminals:
+    ghostty:
+      target: "~/.config/ghostty"
+    tmux:
+      target: "~/.config/tmux"
+  tools:
+    git:
+      target: "~/.config/git"
+    lazygit:
+      target: "~/.config/lazygit"
   work:
     target: "~/work"
     when:

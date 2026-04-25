@@ -4,8 +4,10 @@
 # the hero screenshot, then exec's `store tui` inside it. Your real home
 # is untouched. Press `q` to quit.
 #
-# After the TUI opens, press `j` twice to move the cursor onto `shells` —
-# that's the selection shown in docs/hero.png.
+# After the TUI opens, the ledger lands with all groups collapsed. Press
+# `j` once to select `shells`, `j` again to land on the `terminals` group,
+# `l` to expand it, and `k` to move back to `shells`. That's the frame in
+# docs/hero.png.
 #
 # Requires the `store` binary on your PATH (or pass one via `STORE=...`).
 
@@ -26,14 +28,16 @@ DOTS="$FAKE_HOME/dotfiles"
 
 # Link through ~/dotfiles so the TUI reports them as linked (the symlink
 # target has to match the source path the TUI computes from its repo root).
-ln -s "$DOTS/git"              "$FAKE_HOME/.config/git"
-ln -s "$DOTS/nvim"             "$FAKE_HOME/.config/nvim"
-ln -s "$DOTS/shells/.zshrc"    "$FAKE_HOME/.zshrc"
-ln -s "$DOTS/shells/.bashrc"   "$FAKE_HOME/.bashrc"
-ln -s "$DOTS/shells/config.fish" "$FAKE_HOME/.config/fish/config.fish"
+ln -s "$DOTS/editors/nvim"           "$FAKE_HOME/.config/nvim"
+ln -s "$DOTS/terminals/ghostty"      "$FAKE_HOME/.config/ghostty"
+ln -s "$DOTS/tools/git"              "$FAKE_HOME/.config/git"
+ln -s "$DOTS/tools/lazygit"          "$FAKE_HOME/.config/lazygit"
+ln -s "$DOTS/shells/.zshrc"          "$FAKE_HOME/.zshrc"
+ln -s "$DOTS/shells/.bashrc"         "$FAKE_HOME/.bashrc"
+ln -s "$DOTS/shells/config.fish"     "$FAKE_HOME/.config/fish/config.fish"
 # aliases.fish and ~/.config/nushell/config.nu intentionally missing.
 
-# tmux: nothing at ~/.config/tmux.
+# terminals/tmux: nothing at ~/.config/tmux.
 
 # work: a real directory at the target path produces a conflict.
 mkdir -p "$FAKE_HOME/work/notes"
