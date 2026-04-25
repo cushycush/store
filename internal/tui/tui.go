@@ -265,6 +265,7 @@ func (a *App) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) handleListKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
+	row, hasRow := a.stores.SelectedRow()
 	switch {
 	case key.Matches(k, a.keys.Up):
 		a.stores.Up()
@@ -279,24 +280,60 @@ func (a *App) handleListKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.stores.Bottom()
 		a.flashDetail()
 	case key.Matches(k, a.keys.Enter):
-		if name := a.stores.Selected(); name != "" {
-			a.overlay = OverlayActions
-			a.actions = NewActions(name)
+		if !hasRow {
+			return a, nil
+		}
+		if row.IsGroup {
+			a.stores.ToggleExpand()
+			a.flashDetail()
+			return a, nil
+		}
+		a.overlay = OverlayActions
+		a.actions = NewActions(row.Name)
+	case key.Matches(k, a.keys.Expand):
+		if !hasRow {
+			return a, nil
+		}
+		if row.IsGroup {
+			if !row.Expanded {
+				a.stores.Expand()
+			} else {
+				a.stores.Down()
+			}
+			a.flashDetail()
+			return a, nil
+		}
+		// Leaf: l opens the actions menu, mirroring enter.
+		a.overlay = OverlayActions
+		a.actions = NewActions(row.Name)
+	case key.Matches(k, a.keys.Collapse):
+		if a.stores.Collapse() {
+			a.flashDetail()
 		}
 	case key.Matches(k, a.keys.Space):
+		if hasRow && row.IsGroup {
+			a.stores.ToggleExpand()
+			a.flashDetail()
+			return a, nil
+		}
 		return a, a.trackOp(a.quickToggle())
 	case key.Matches(k, a.keys.Diff):
-		if name := a.stores.Selected(); name != "" {
+		if name := a.stores.SelectedStore(); name != "" {
 			return a, a.trackOp(CmdDiff(a.root, name, a.cfg.Stores[name]))
 		}
 	case key.Matches(k, a.keys.ApplyAll):
 		return a, a.trackOp(CmdApplyAll(a.root, a.cfg))
 	case key.Matches(k, a.keys.Remove):
-		if name := a.stores.Selected(); name != "" {
+		if name := a.stores.SelectedStore(); name != "" {
 			a.openRemoveConfirm(name)
 		}
 	case key.Matches(k, a.keys.Back):
-		// esc clears filter if active
+		// h doubles as "collapse / jump to parent" when there's somewhere
+		// to go in the tree. Otherwise it (or esc) clears an active filter.
+		if a.stores.Collapse() {
+			a.flashDetail()
+			return a, nil
+		}
 		if a.stores.FilterQuery() != "" {
 			a.stores.Filter("")
 		}
@@ -310,7 +347,7 @@ func (a *App) handleListKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) quickToggle() tea.Cmd {
-	name := a.stores.Selected()
+	name := a.stores.SelectedStore()
 	if name == "" {
 		return nil
 	}
@@ -932,9 +969,23 @@ func (a *App) renderMain() string {
 
 	b.WriteString("\n")
 
-	// Detail section
-	selName := a.stores.Selected()
-	if selName != "" {
+	// Detail section. The detail pane only makes sense for leaf stores;
+	// when the cursor sits on a group row we render an aggregate header
+	// without the per-target ledger.
+	selRow, hasSel := a.stores.SelectedRow()
+	if hasSel && selRow.IsGroup {
+		flash := decay(now.Sub(a.detailFlashAt), 200*time.Millisecond)
+		ruleColor := selRow.State.Color()
+		if flash > 0 {
+			ruleColor = Mix(selRow.State.Color(), ColorEmber, flash)
+		}
+		title := selRow.Name + "/"
+		right := plural(selRow.DescendantCount, "store", "stores") + "  " + selRow.State.Label()
+		b.WriteString(Rule(width-4, title, right, ruleColor))
+		b.WriteString("\n\n  " + StyleDim.Render("press l or enter to expand"))
+		b.WriteString("\n")
+	} else if hasSel {
+		selName := selRow.Name
 		entry, ok := a.cfg.Stores[selName]
 		if ok {
 			results := storeops.GetStatus(a.root, selName, entry)

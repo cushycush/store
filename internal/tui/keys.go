@@ -21,6 +21,12 @@ type Keymap struct {
 	ApplyAll key.Binding
 	Diff     key.Binding
 	Remove   key.Binding
+
+	// Tree navigation. Expand opens a group (or moves into the actions
+	// menu on a leaf); Collapse shuts a group (or jumps to its parent
+	// from a child row).
+	Expand   key.Binding
+	Collapse key.Binding
 }
 
 // DefaultKeymap returns the canonical keymap.
@@ -47,6 +53,9 @@ func DefaultKeymap() Keymap {
 		ApplyAll: key.NewBinding(key.WithKeys("A"), key.WithHelp("A", "apply all")),
 		Diff:     key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "diff")),
 		Remove:   key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "remove")),
+
+		Expand:   key.NewBinding(key.WithKeys("l", "right"), key.WithHelp("l", "expand")),
+		Collapse: key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "collapse")),
 	}
 }
 

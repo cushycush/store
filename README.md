@@ -300,12 +300,42 @@ stores:
           - "*.bak"
 ```
 
+Nested groups:
+
+Once you have more than a handful of stores, slash-named keys like
+`desktop/hyprland` start to feel cluttered. You can group them under a
+plain YAML map instead, and the resulting store names are derived from
+the keys joined with `/`:
+
+```yaml
+stores:
+  desktop:
+    hyprland:
+      target: "~/.config/hypr"
+    waybar:
+      target: "~/.config/waybar"
+  editors:
+    neovim:
+      target: "~/.config/nvim"
+  kmonad:
+    target: "~/.config/kmonad"
+```
+
+That config defines four stores: `desktop/hyprland`, `desktop/waybar`,
+`editors/neovim`, and `kmonad`. The store directories on disk still live
+at the same paths as the slash-joined names. Both forms read the same way
+internally, so you can freely mix them, and any store you add or modify
+through the CLI or TUI is saved back in the nested form when there is no
+ambiguity.
+
 Rules:
 
 - A store may use either `target` or `targets`, not both.
 - In multi-target mode, `files`, `patterns`, and `ignore` belong inside each `targets[]` entry.
 - If a store entry has no target yet, it is valid config but nothing is linked.
 - `vars` is a top-level map alongside `stores`; values are accessible in templates as `{{ .Vars.key }}`.
+- A YAML map is treated as a store entry when it has any of `target`, `targets`, `files`, `patterns`, `ignore`, `hooks`, or `when`. Otherwise it is treated as a group containing more stores.
+- A store name and a group cannot share a path. If you have both `shells` (a store) and `shells/fish` (another store), the file falls back to flat slash keys for those entries so each one stays addressable.
 
 ### Top-level store fields
 
@@ -550,26 +580,24 @@ Implementation details a user might bump into at the edges. You don't need this 
 
 ## Interactive TUI
 
-`store tui` opens a keyboard-driven dashboard. Every CLI verb is reachable from inside it — a handful via single-letter bindings, the rest through the `:` command palette. The dashboard reads as a single vertical column: a ledger of your stores on top, the selected store's detail below, and the recent activity log beneath that. No panes, no outer frame.
+`store tui` opens a keyboard-driven dashboard. Every CLI verb is reachable from inside it. A handful run through single-letter bindings, the rest through the `:` command palette. The dashboard reads as a single vertical column: a ledger of your stores on top, the selected store's detail below, and the recent activity log beneath that. No panes, no outer frame.
 
 ```text
   store                                        ~/dotfiles   linux/amd64  ·
 
-  ─── 4 stores ·  3 linked  1 missing ─────────────────────────────────
+  ─── 8 stores ·  6 linked  2 missing ─────────────────────────────────
 
-     nvim      ~/.config/nvim                             ●  linked
-     shells    3 targets                                  ◐  partial
-     git       ~/.config/git                              ●  linked
-  ▸  tmux      ~/.config/tmux                             ○  missing
+  ▸  + desktop    4 stores                                  ●  linked
+     + editors    1 store                                   ●  linked
+     − shells
+        fish      ~/.config/fish                            ●  linked
+        nushell   ~/.config/nushell                         ○  missing
+     + tools      1 store                                   ●  linked
+       kmonad     ~/.config/kmonad                          ●  linked
 
-  ─── tmux ──────────────────────────────────────────────── missing ─
+  ─── desktop/ ────────────────────────────── 4 stores  linked ─
 
-    target     ~/.config/tmux
-    mode       whole directory
-
-    files
-      ○  tmux.conf
-      ○  plugins/tpm
+    press l or enter to expand
 
   ─── recent ─────────────────────────────────────────────────────────
 
@@ -577,6 +605,11 @@ Implementation details a user might bump into at the edges. You don't need this 
 
   j/k move   enter actions   space toggle   / filter   : command   ? help
 ```
+
+When stores share a slash-prefix, the ledger groups them under a header
+row so you can scan the top level first. A `+` next to the group means
+collapsed; a `−` means open. Top-level stores (no slash in the name) sit
+alongside groups at the same indent.
 
 ### Keymap
 
@@ -586,18 +619,20 @@ Implementation details a user might bump into at the edges. You don't need this 
 | --- | ------ |
 | `j` / `k` | Move up / down the store list |
 | `g` / `G` | Top / bottom |
-| `esc` / `h` | Back · close the top overlay |
+| `l` / `→` | Expand a group, or open the action menu on a leaf store |
+| `h` / `←` | Collapse the current group, or jump from a child row to its parent |
+| `esc` | Back. Clears an active filter and closes the top overlay |
 
 **Stores**
 
 | Key | Action |
 | --- | ------ |
-| `enter` | Open the action menu for the selected store |
-| `space` | Quick toggle: link if missing, unlink if linked |
-| `d` | Diff — preview to the activity log |
+| `enter` | Toggle a group's expand state, or open the action menu on a leaf store |
+| `space` | Toggle a group's expand state, or link / unlink the selected store |
+| `d` | Diff. Preview to the activity log |
 | `A` | Apply all (reconcile every store) |
 | `R` | Remove the selected store (typed confirmation required) |
-| `/` | Filter the store list live |
+| `/` | Filter the store list live. Filter mode flattens matches across all groups |
 
 **Commands**
 

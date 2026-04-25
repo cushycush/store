@@ -4,6 +4,36 @@ All notable changes to `store` are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-04-25
+
+### Added
+
+- **Nested groups in `config.yaml`.** Once you have more than a handful of
+  stores, slash-named keys like `desktop/hyprland` get noisy. You can now
+  group them under plain YAML maps and the resulting store names are
+  derived from the keys joined with `/`. A map is treated as a store
+  entry when it has `target`, `targets`, `files`, `patterns`, `ignore`,
+  `hooks`, or `when`; otherwise it's a group containing more stores.
+  Old flat configs still load unchanged. Any time `store` writes the file
+  back, the nested form is the default. If a name like `shells` is also
+  the prefix of another name like `shells/fish`, those entries fall back
+  to flat slash keys so both stay addressable.
+- **Collapsible tree view in the TUI.** When stores share a slash-prefix,
+  the ledger collapses them under a group header. `+` means collapsed,
+  `−` means open. The group row shows an aggregate state and a count of
+  stores beneath it, so you can scan the top of the file at a glance and
+  drill in only where you need to. Filter mode flattens the tree so a
+  search hits every store regardless of where it lives.
+
+### Changed
+
+- **TUI keymap.** `l` / `→` and `h` / `←` are now tree-aware. `l` expands
+  a group or opens the action menu on a leaf. `h` collapses the current
+  group or jumps from a child row to its parent. `esc` still clears an
+  active filter and closes overlays. `enter` and `space` toggle a
+  group's expand state when the cursor is on a header row, and behave as
+  before on leaf rows.
+
 ## [2.4.0] - 2026-04-22
 
 ### Added

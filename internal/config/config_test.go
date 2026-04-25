@@ -372,6 +372,149 @@ func TestStoreEntryMigrateToSingleTarget(t *testing.T) {
 	}
 }
 
+func TestLoadNestedStores(t *testing.T) {
+	root := t.TempDir()
+	writeConfigFile(t, root, `stores:
+  desktop:
+    hyprland:
+      target: ~/.config/hypr
+    waybar:
+      target: ~/.config/waybar
+  editors:
+    neovim:
+      target: ~/.config/nvim
+  kmonad:
+    target: ~/.config/kmonad
+`)
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	want := map[string]string{
+		"desktop/hyprland": "~/.config/hypr",
+		"desktop/waybar":   "~/.config/waybar",
+		"editors/neovim":   "~/.config/nvim",
+		"kmonad":           "~/.config/kmonad",
+	}
+	if len(cfg.Stores) != len(want) {
+		t.Fatalf("Stores has %d entries, want %d (%#v)", len(cfg.Stores), len(want), cfg.Stores)
+	}
+	for name, target := range want {
+		got, ok := cfg.Stores[name]
+		if !ok {
+			t.Errorf("missing store %q", name)
+			continue
+		}
+		if got.Target != target {
+			t.Errorf("store %q target = %q, want %q", name, got.Target, target)
+		}
+	}
+}
+
+func TestLoadFlatStoresStillWorks(t *testing.T) {
+	root := t.TempDir()
+	writeConfigFile(t, root, `stores:
+  desktop/hyprland:
+    target: ~/.config/hypr
+  editors/neovim:
+    target: ~/.config/nvim
+`)
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got, want := cfg.Stores["desktop/hyprland"].Target, "~/.config/hypr"; got != want {
+		t.Errorf("desktop/hyprland target = %q, want %q", got, want)
+	}
+	if got, want := cfg.Stores["editors/neovim"].Target, "~/.config/nvim"; got != want {
+		t.Errorf("editors/neovim target = %q, want %q", got, want)
+	}
+}
+
+func TestLoadMixedFlatAndNested(t *testing.T) {
+	root := t.TempDir()
+	writeConfigFile(t, root, `stores:
+  desktop:
+    hyprland:
+      target: ~/.config/hypr
+  editors/neovim:
+    target: ~/.config/nvim
+  kmonad:
+    target: ~/.config/kmonad
+`)
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	for _, name := range []string{"desktop/hyprland", "editors/neovim", "kmonad"} {
+		if _, ok := cfg.Stores[name]; !ok {
+			t.Errorf("missing store %q", name)
+		}
+	}
+}
+
+func TestSaveEmitsNestedWhenPossible(t *testing.T) {
+	root := t.TempDir()
+	cfg := &Config{Stores: map[string]StoreEntry{
+		"desktop/hyprland": {Target: "~/.config/hypr"},
+		"desktop/waybar":   {Target: "~/.config/waybar"},
+		"kmonad":           {Target: "~/.config/kmonad"},
+	}}
+	if err := Save(root, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	data, err := os.ReadFile(ConfigPath(root))
+	if err != nil {
+		t.Fatalf("ReadFile error = %v", err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "desktop:") {
+		t.Errorf("output missing 'desktop:' group header:\n%s", got)
+	}
+	if strings.Contains(got, "desktop/hyprland:") {
+		t.Errorf("output should nest hyprland under desktop, but kept flat key:\n%s", got)
+	}
+	// Reload and confirm the flat names round-trip identically.
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatalf("reload error = %v", err)
+	}
+	for _, name := range []string{"desktop/hyprland", "desktop/waybar", "kmonad"} {
+		if _, ok := loaded.Stores[name]; !ok {
+			t.Errorf("after round-trip, store %q missing", name)
+		}
+	}
+}
+
+func TestSaveFallsBackToFlatOnPrefixCollision(t *testing.T) {
+	root := t.TempDir()
+	cfg := &Config{Stores: map[string]StoreEntry{
+		"shells":      {Target: "~"},
+		"shells/fish": {Target: "~/.config/fish"},
+	}}
+	if err := Save(root, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	data, err := os.ReadFile(ConfigPath(root))
+	if err != nil {
+		t.Fatalf("ReadFile error = %v", err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "shells/fish:") {
+		t.Errorf("output should keep flat slash key for collision:\n%s", got)
+	}
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatalf("reload error = %v", err)
+	}
+	if _, ok := loaded.Stores["shells/fish"]; !ok {
+		t.Errorf("after round-trip, shells/fish missing")
+	}
+	if _, ok := loaded.Stores["shells"]; !ok {
+		t.Errorf("after round-trip, shells missing")
+	}
+}
+
 func TestConfigLoadSaveRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	want := &Config{

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	core "github.com/cushycush/store-core/config"
 	"gopkg.in/yaml.v3"
@@ -163,9 +165,250 @@ func (e *StoreEntry) MigrateToSingleTarget() {
 }
 
 // Config represents the full .store/config.yaml file.
+//
+// The on-disk YAML may write `stores:` as either a flat mapping where keys
+// embed slashes ("desktop/hyprland: ...") or as a nested mapping where
+// groups contain stores ("desktop:\n  hyprland: ..."). Both forms parse
+// into the same flat `Stores` map keyed by full slash path; the tree view
+// in the TUI derives its hierarchy from those slashes. On Save, the
+// config writes back nested when there are no name collisions, and falls
+// back to flat keys when a store name is also a prefix of another name.
 type Config struct {
-	Stores map[string]StoreEntry `yaml:"stores"`
-	Vars   map[string]string     `yaml:"vars,omitempty"`
+	Stores map[string]StoreEntry `yaml:"-"`
+	Vars   map[string]string     `yaml:"-"`
+}
+
+// storeFieldSet enumerates the keys that mark a YAML mapping as a store
+// entry rather than a nested group. Anything else at that level is a group
+// containing more stores.
+var storeFieldSet = map[string]bool{
+	"target":   true,
+	"targets":  true,
+	"files":    true,
+	"patterns": true,
+	"ignore":   true,
+	"hooks":    true,
+	"when":     true,
+}
+
+// UnmarshalYAML parses either flat or nested `stores:` mappings.
+func (c *Config) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.DocumentNode && len(node.Content) > 0 {
+		node = node.Content[0]
+	}
+	c.Stores = make(map[string]StoreEntry)
+	c.Vars = nil
+	if node.Kind == yaml.ScalarNode && node.Value == "" {
+		return nil
+	}
+	if node.Kind != yaml.MappingNode {
+		return fmt.Errorf("config: expected mapping, got %s", yamlKindName(node.Kind))
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		k := node.Content[i]
+		v := node.Content[i+1]
+		switch k.Value {
+		case "stores":
+			if err := unmarshalStores(v, "", c.Stores); err != nil {
+				return err
+			}
+		case "vars":
+			if v.Kind == yaml.ScalarNode && v.Value == "" {
+				continue
+			}
+			if err := v.Decode(&c.Vars); err != nil {
+				return fmt.Errorf("vars: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+// MarshalYAML emits a nested `stores:` mapping where possible. When a store
+// name is also a prefix of another (e.g. both "shells" and "shells/fish"
+// exist), the whole tree falls back to flat slash-paths so the output is
+// unambiguous.
+func (c Config) MarshalYAML() (any, error) {
+	root := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	storesNode, err := buildStoresNode(c.Stores)
+	if err != nil {
+		return nil, err
+	}
+	root.Content = append(root.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Value: "stores"},
+		storesNode,
+	)
+	if len(c.Vars) > 0 {
+		varsNode := &yaml.Node{}
+		if err := varsNode.Encode(c.Vars); err != nil {
+			return nil, fmt.Errorf("vars: %w", err)
+		}
+		root.Content = append(root.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "vars"},
+			varsNode,
+		)
+	}
+	return root, nil
+}
+
+func unmarshalStores(node *yaml.Node, prefix string, out map[string]StoreEntry) error {
+	if node.Kind == yaml.ScalarNode && node.Value == "" {
+		return nil
+	}
+	if node.Kind != yaml.MappingNode {
+		return fmt.Errorf("stores: expected mapping at %q", prefix)
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		k := node.Content[i]
+		v := node.Content[i+1]
+		name := k.Value
+		if prefix != "" {
+			name = prefix + "/" + name
+		}
+		if v.Kind == yaml.MappingNode && !isStoreEntryNode(v) {
+			if err := unmarshalStores(v, name, out); err != nil {
+				return err
+			}
+			continue
+		}
+		var entry StoreEntry
+		if v.Kind == yaml.MappingNode {
+			if err := v.Decode(&entry); err != nil {
+				return fmt.Errorf("store %q: %w", name, err)
+			}
+		}
+		// Scalar null leaves entry zero-valued; Validate emits the warning.
+		out[name] = entry
+	}
+	return nil
+}
+
+func isStoreEntryNode(node *yaml.Node) bool {
+	if node.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if storeFieldSet[node.Content[i].Value] {
+			return true
+		}
+	}
+	return false
+}
+
+func buildStoresNode(stores map[string]StoreEntry) (*yaml.Node, error) {
+	out := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	if len(stores) == 0 {
+		return out, nil
+	}
+
+	names := make([]string, 0, len(stores))
+	for n := range stores {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	if hasPrefixCollision(names) {
+		// Fall back to flat slash-paths so every entry remains addressable.
+		for _, name := range names {
+			v := &yaml.Node{}
+			if err := v.Encode(stores[name]); err != nil {
+				return nil, fmt.Errorf("encode %q: %w", name, err)
+			}
+			out.Content = append(out.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Value: name},
+				v,
+			)
+		}
+		return out, nil
+	}
+
+	type tnode struct {
+		isStore  bool
+		entry    StoreEntry
+		children map[string]*tnode
+	}
+	root := &tnode{children: map[string]*tnode{}}
+	for _, name := range names {
+		parts := strings.Split(name, "/")
+		cur := root
+		for i, p := range parts {
+			child, ok := cur.children[p]
+			if !ok {
+				child = &tnode{children: map[string]*tnode{}}
+				cur.children[p] = child
+			}
+			if i == len(parts)-1 {
+				child.isStore = true
+				child.entry = stores[name]
+			}
+			cur = child
+		}
+	}
+
+	var emit func(parent *yaml.Node, t *tnode) error
+	emit = func(parent *yaml.Node, t *tnode) error {
+		keys := make([]string, 0, len(t.children))
+		for k := range t.children {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			child := t.children[k]
+			keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: k}
+			if child.isStore {
+				v := &yaml.Node{}
+				if err := v.Encode(child.entry); err != nil {
+					return err
+				}
+				parent.Content = append(parent.Content, keyNode, v)
+				continue
+			}
+			v := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+			if err := emit(v, child); err != nil {
+				return err
+			}
+			parent.Content = append(parent.Content, keyNode, v)
+		}
+		return nil
+	}
+	if err := emit(out, root); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// hasPrefixCollision reports whether any name is also a slash-prefix of
+// another. When that happens the nested form would have to make a single
+// key both a leaf entry and a parent group, so we emit flat instead.
+func hasPrefixCollision(sortedNames []string) bool {
+	for i, n := range sortedNames {
+		for j := i + 1; j < len(sortedNames); j++ {
+			m := sortedNames[j]
+			if !strings.HasPrefix(m, n) {
+				break
+			}
+			if len(m) > len(n) && m[len(n)] == '/' {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func yamlKindName(k yaml.Kind) string {
+	switch k {
+	case yaml.ScalarNode:
+		return "scalar"
+	case yaml.SequenceNode:
+		return "sequence"
+	case yaml.MappingNode:
+		return "mapping"
+	case yaml.AliasNode:
+		return "alias"
+	case yaml.DocumentNode:
+		return "document"
+	}
+	return "unknown"
 }
 
 // ConfigPath returns the path to the config file given a repo root.
