@@ -25,7 +25,16 @@ type TemplateData struct {
 }
 
 var secretPattern = regexp.MustCompile(`\{\{\s*secret\s+"([^"]+)"\s*\}\}`)
-var templatePattern = regexp.MustCompile(`\{\{`)
+
+// templatePattern matches only the template forms store actually supports:
+// the `secret`/`env` function calls and the `.Hostname`/`.OS`/`.Arch`/`.Distro`
+// /`.Shell`/`.Vars` data references (including the `index .Vars "..."` form).
+// Files that contain unrelated `{{ ... }}` content — GitHub Actions
+// expressions, Helm charts, Jinja examples in docs — are left as plain text
+// and symlinked verbatim instead of being mis-parsed as Go templates.
+var templatePattern = regexp.MustCompile(
+	`\{\{[^{}]*?(?:\bsecret\s+"|\benv\s+"|\.(?:Hostname|OS|Arch|Distro|Shell|Vars)\b)`,
+)
 var varDotPattern = regexp.MustCompile(`\{\{[^{}]*?\.Vars\.([A-Za-z_][A-Za-z0-9_]*)`)
 var varIndexPattern = regexp.MustCompile(`\{\{[^{}]*?index\s+\.Vars\s+"([^"]+)"`)
 
@@ -36,7 +45,10 @@ func HasSecrets(content []byte) bool {
 	return secretPattern.Match(content)
 }
 
-// HasTemplates checks if file content contains any {{ ... }} template syntax.
+// HasTemplates reports whether content contains any template form that store
+// is responsible for rendering. Unrelated `{{ ... }}` content (e.g. literal
+// GitHub Actions or Helm syntax in a markdown file) is intentionally not
+// treated as a template.
 func HasTemplates(content []byte) bool {
 	return templatePattern.Match(content)
 }
