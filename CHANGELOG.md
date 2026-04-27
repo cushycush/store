@@ -4,6 +4,19 @@ All notable changes to `store` are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1] - 2026-04-27
+
+### Fixed
+
+- **Files with literal `{{ ... }}` content no longer fail rendering.** Until
+  now, `store` treated any file containing `{{` as a Go template and tried
+  to render it, which broke markdown and config files that include
+  GitHub Actions expressions, Helm charts, Jinja examples, or any other
+  literal template-style syntax. Detection is now scoped to the forms
+  `store` actually understands (`{{ secret "..." }}`, `{{ env "..." }}`,
+  and the `.Hostname` / `.OS` / `.Arch` / `.Distro` / `.Shell` / `.Vars`
+  data fields). Anything else is symlinked verbatim. Reported in #58.
+
 ## [2.5.0] - 2026-04-25
 
 ### Added
