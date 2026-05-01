@@ -163,6 +163,22 @@ $ mv store /usr/local/bin/
 
 > Windows: creating symlinks requires either Developer Mode enabled in Settings → Privacy & Security → For developers, or running your terminal as Administrator. `store doctor` detects the missing capability and warns on first run. Alternatively, run `store` from WSL.
 
+### Windows: PowerShell wrapper for the `store` command
+
+Windows ships with a Microsoft Store CLI shim at `%LocalAppData%\Microsoft\WindowsApps\store.exe`. Because that path comes ahead of `~\go\bin` on `PATH`, typing `store` resolves to the Microsoft shim rather than this tool, even after `go install`. You can confirm with `where.exe store` (the shim path lists first).
+
+The fix is a one-liner in your PowerShell `$PROFILE`:
+
+```powershell
+function store {
+  & "$HOME\go\bin\store.exe" @args
+}
+```
+
+Reload the profile (`. $PROFILE`) and `store` resolves to this tool from then on. The function takes precedence over PATH lookup in PowerShell so the shim never wins.
+
+When the binary detects it is being shadowed (you ran `~\go\bin\store.exe` directly while `where.exe store` reports the shim ahead of it), it prints the same hint to stderr once. After the first time it remembers (via a marker in `%AppData%\store\windows-shim-hint-shown`) and stays quiet. Delete the marker if you want to see the hint again. Reported in #60.
+
 ---
 
 ## Quick Start

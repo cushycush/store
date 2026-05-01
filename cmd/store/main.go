@@ -9,6 +9,7 @@ var (
 )
 
 func main() {
+	checkWindowsShimCollision()
 	// Git-style: hand off to an external `store-<cmd>` (or a known
 	// companion binary like `stock`) before cobra sees the args.
 	if len(os.Args) >= 2 {
