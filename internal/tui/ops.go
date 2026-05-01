@@ -402,6 +402,125 @@ func CmdTargetModify(root string, cfg *config.Config, name, target string, files
 	}
 }
 
+// CmdTargetWhen sets or clears the per-target when: clause on a specific
+// target. An empty expression clears the clause. The expression syntax is
+// space-separated key=value pairs where the value may be a single string or
+// a comma-separated list, e.g. "os=linux,darwin shell=zsh". After updating
+// the config, the symlink is unlinked first and then re-linked only if the
+// new clause matches the current platform.
+func CmdTargetWhen(root string, cfg *config.Config, name, target, expr string) tea.Cmd {
+	return func() tea.Msg {
+		if name == "" || target == "" {
+			return OpResult{Label: "target when", Kind: ActivityWarn, Msg: "need both store name and target path"}
+		}
+		when, err := parseWhenExpression(expr)
+		if err != nil {
+			return OpResult{Label: "target when", Kind: ActivityErr, Msg: err.Error(), Err: err}
+		}
+		entry, ok := cfg.Stores[name]
+		if !ok {
+			return OpResult{Label: "target when", Kind: ActivityErr, Msg: "no such store: " + name}
+		}
+		entry.MigrateToMultiTarget()
+		idx := -1
+		for i, t := range entry.Targets {
+			if sameTargetPath(t.Target, target) {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return OpResult{Label: "target when", Kind: ActivityErr, Msg: "no such target: " + target}
+		}
+		oldTarget := entry.Targets[idx]
+		_ = storeops.StoreRemoveTarget(root, name, oldTarget)
+		entry.Targets[idx].When = when
+		cfg.Stores[name] = entry
+		if err := config.Save(root, cfg); err != nil {
+			return OpResult{Label: "target when", Kind: ActivityErr, Msg: err.Error(), Err: err, Reload: true}
+		}
+		newTarget := entry.Targets[idx]
+		if when == nil {
+			if err := storeops.StoreTarget(root, name, newTarget); err != nil {
+				return OpResult{Label: "target when", Kind: ActivityErr, Msg: err.Error(), Err: err, Reload: true}
+			}
+			return OpResult{Label: "target when", Kind: ActivityOK, Msg: "cleared when on " + name + " target " + target, Reload: true}
+		}
+		return OpResult{Label: "target when", Kind: ActivityOK, Msg: "set when on " + name + " target " + target, Reload: true}
+	}
+}
+
+// parseWhenExpression turns a space-separated key=value string into a
+// WhenClause. Empty or whitespace-only input returns (nil, nil) to mean
+// "clear the clause." Values may be comma-separated lists. The wsl key
+// takes a bool (true/false/1/0).
+func parseWhenExpression(s string) (*config.WhenClause, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	out := &config.WhenClause{}
+	for _, field := range strings.Fields(s) {
+		eq := strings.IndexByte(field, '=')
+		if eq <= 0 || eq == len(field)-1 {
+			return nil, fmt.Errorf("expected key=value, got %q", field)
+		}
+		key := strings.ToLower(strings.TrimSpace(field[:eq]))
+		raw := strings.TrimSpace(field[eq+1:])
+		if key == "wsl" {
+			b, err := parseBool(raw)
+			if err != nil {
+				return nil, fmt.Errorf("wsl=%q: %w", raw, err)
+			}
+			out.WSL = &b
+			continue
+		}
+		values := splitWhenValues(raw)
+		if len(values) == 0 {
+			return nil, fmt.Errorf("%s=: empty value", key)
+		}
+		switch key {
+		case "os":
+			out.OS = values
+		case "arch":
+			out.Arch = values
+		case "distro":
+			out.Distro = values
+		case "distro_version":
+			out.DistroVersion = values
+		case "hostname":
+			out.Hostname = values
+		case "shell":
+			out.Shell = values
+		default:
+			return nil, fmt.Errorf("unknown when key %q (valid: os, arch, distro, distro_version, hostname, shell, wsl)", key)
+		}
+	}
+	return out, nil
+}
+
+func splitWhenValues(raw string) config.Strings {
+	parts := strings.Split(raw, ",")
+	out := make(config.Strings, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func parseBool(s string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "true", "1", "yes":
+		return true, nil
+	case "false", "0", "no":
+		return false, nil
+	}
+	return false, fmt.Errorf("expected true/false")
+}
+
 // CmdApplyTarget reconciles one target of a store without touching the
 // others. Used by the in-TUI target submenu.
 func CmdApplyTarget(root, name string, te config.TargetEntry) tea.Cmd {
