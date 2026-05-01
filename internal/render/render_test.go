@@ -35,6 +35,55 @@ func TestHasSecrets(t *testing.T) {
 	}
 }
 
+func TestHasTemplates(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		// Recognised store template forms.
+		{name: "secret call", content: `{{ secret "token" }}`, want: true},
+		{name: "secret call tight", content: `{{secret "token"}}`, want: true},
+		{name: "env call", content: `{{ env "HOME" }}`, want: true},
+		{name: "hostname", content: `host={{ .Hostname }}`, want: true},
+		{name: "os", content: `{{ .OS }}`, want: true},
+		{name: "arch", content: `{{ .Arch }}`, want: true},
+		{name: "distro", content: `{{ .Distro }}`, want: true},
+		{name: "shell", content: `{{ .Shell }}`, want: true},
+		{name: "vars dot", content: `editor={{ .Vars.editor }}`, want: true},
+		{name: "vars dot pipeline", content: `{{ .Vars.name | upper }}`, want: true},
+		{name: "vars index", content: `{{ index .Vars "my-key" }}`, want: true},
+		{name: "trim markers", content: `{{- .Hostname -}}`, want: true},
+		{name: "control flow with .OS", content: `{{if eq .OS "linux"}}foo{{end}}`, want: true},
+		{name: "with .Vars block", content: `{{with .Vars}}{{.editor}}{{end}}`, want: true},
+
+		// Literal `{{ ... }}` content from other tools — must NOT be treated
+		// as a store template. These are the regressions reported in #58.
+		{name: "github actions secrets", content: `github_token: ${{ secrets.GITHUB_TOKEN }}`, want: false},
+		{name: "github actions inputs", content: `name: ${{ inputs.name }}`, want: false},
+		{name: "helm values", content: `replicas: {{ .Values.replicaCount }}`, want: false},
+		{name: "helm release", content: `name: {{ .Release.Name }}`, want: false},
+		{name: "jinja variable", content: `Hello {{ name }}`, want: false},
+		{name: "handlebars", content: `{{firstName}} {{lastName}}`, want: false},
+		{name: "literal docs", content: "Use `{{ ... }}` for templates.", want: false},
+		{name: "unbalanced opener", content: `prefix {{ no closer here`, want: false},
+		{name: "vars-like prefix", content: `{{ .Variables.foo }}`, want: false},
+		{name: "os-like prefix", content: `{{ .OSDetails.kernel }}`, want: false},
+
+		// Plain content.
+		{name: "plain text", content: `hello world`, want: false},
+		{name: "empty", content: ``, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HasTemplates([]byte(tt.content)); got != tt.want {
+				t.Fatalf("HasTemplates(%q) = %v, want %v", tt.content, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsBinary(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -397,6 +446,20 @@ func TestPrepareStaging(t *testing.T) {
 			},
 			secrets: map[string]string{},
 			wantErr: `missing secret: missing`,
+		},
+		{
+			name: "literal github actions syntax is symlinked, not rendered",
+			setup: func(t *testing.T, sourceDir, stagingDir string) {
+				writeTestFile(t, filepath.Join(sourceDir, "workflow.md"),
+					"Example:\n\n    github_token: ${{ secrets.GITHUB_TOKEN }}\n")
+			},
+			secrets: map[string]string{},
+			want:    false,
+			assertion: func(t *testing.T, sourceDir, stagingDir string) {
+				assertSymlinkTarget(t,
+					filepath.Join(stagingDir, "workflow.md"),
+					filepath.Join(sourceDir, "workflow.md"))
+			},
 		},
 		{
 			name: "binary files with template-looking bytes are symlinked, not rendered",

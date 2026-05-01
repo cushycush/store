@@ -439,6 +439,8 @@ How it works:
 
 Files in a store can contain Go `text/template` expressions. When `store` links or restores a store, it renders these templates into a local staging directory and symlinks the rendered output. Files without template expressions are symlinked directly.
 
+A file is treated as a template only when it references one of the names store knows about: the `secret` or `env` function, or one of the `.Hostname` / `.OS` / `.Arch` / `.Distro` / `.Shell` / `.Vars` data fields. Files that contain unrelated `{{ ... }}` content (GitHub Actions expressions, Helm charts, Jinja or Handlebars examples in docs, etc.) are passed through verbatim.
+
 ### Template functions
 
 | Expression                 | Description                                            |
