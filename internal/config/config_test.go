@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/cushycush/store-core/platform"
 )
 
 func TestTargetEntryHasFileMode(t *testing.T) {
@@ -176,6 +178,64 @@ func TestStoreEntryResolvedTargets(t *testing.T) {
 				t.Fatalf("ResolvedTargets() = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestStoreEntryApplicableTargets(t *testing.T) {
+	linuxOnly := &WhenClause{OS: Strings{"linux"}}
+	windowsOnly := &WhenClause{OS: Strings{"windows"}}
+	linuxOrDarwin := &WhenClause{OS: Strings{"linux", "darwin"}}
+
+	entry := StoreEntry{Targets: []TargetEntry{
+		{Target: "~/.config/helix", When: linuxOnly},
+		{Target: "~/AppData/Roaming/helix", When: windowsOnly},
+		{Target: "~/.local/share/helix", When: linuxOrDarwin},
+		{Target: "~/.helix"}, // no when: always applies
+	}}
+
+	tests := []struct {
+		name string
+		info platform.Info
+		want []string
+	}{
+		{
+			name: "linux keeps linux-only, linux-or-darwin, and unconstrained",
+			info: platform.Info{OS: "linux"},
+			want: []string{"~/.config/helix", "~/.local/share/helix", "~/.helix"},
+		},
+		{
+			name: "windows keeps only windows-only and unconstrained",
+			info: platform.Info{OS: "windows"},
+			want: []string{"~/AppData/Roaming/helix", "~/.helix"},
+		},
+		{
+			name: "darwin keeps linux-or-darwin and unconstrained",
+			info: platform.Info{OS: "darwin"},
+			want: []string{"~/.local/share/helix", "~/.helix"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := entry.ApplicableTargets(tt.info)
+			gotPaths := make([]string, len(got))
+			for i, te := range got {
+				gotPaths[i] = te.Target
+			}
+			if !reflect.DeepEqual(gotPaths, tt.want) {
+				t.Fatalf("ApplicableTargets(%+v) targets = %v, want %v", tt.info, gotPaths, tt.want)
+			}
+		})
+	}
+}
+
+func TestStoreEntryApplicableTargetsSingleTargetForm(t *testing.T) {
+	// Single-target form has no per-target when:; the store-level when: is filtered
+	// elsewhere, so ApplicableTargets always returns the resolved single target.
+	entry := StoreEntry{Target: "~/.zshrc", When: &WhenClause{OS: Strings{"linux"}}}
+	got := entry.ApplicableTargets(platform.Info{OS: "windows"})
+	if len(got) != 1 || got[0].Target != "~/.zshrc" {
+		t.Fatalf("ApplicableTargets() = %#v, want single ~/.zshrc target", got)
 	}
 }
 
@@ -358,6 +418,21 @@ func TestStoreEntryMigrateToSingleTarget(t *testing.T) {
 				Patterns: nil,
 			},
 		},
+		{
+			name: "remaining target with when stays multi-target",
+			in: StoreEntry{
+				Targets: []TargetEntry{{
+					Target: "~/.config/helix",
+					When:   &WhenClause{OS: Strings{"linux"}},
+				}},
+			},
+			want: StoreEntry{
+				Targets: []TargetEntry{{
+					Target: "~/.config/helix",
+					When:   &WhenClause{OS: Strings{"linux"}},
+				}},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -529,6 +604,12 @@ func TestConfigLoadSaveRoundTrip(t *testing.T) {
 				Targets: []TargetEntry{
 					{Target: "~", Files: []string{".zshrc", ".bashrc"}, Ignore: []string{"*.bak"}},
 					{Target: "~/.config/fish", Patterns: []string{"*.fish"}, Ignore: []string{"scratch/"}},
+				},
+			},
+			"helix": {
+				Targets: []TargetEntry{
+					{Target: "~/.config/helix", When: &WhenClause{OS: Strings{"linux"}}},
+					{Target: "~/AppData/Roaming/helix", When: &WhenClause{OS: Strings{"windows"}}},
 				},
 			},
 		},

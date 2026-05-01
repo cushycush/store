@@ -159,6 +159,62 @@ func TestCheckPlatformSkippedStore(t *testing.T) {
 	}})
 }
 
+func TestCheckPlatformSkippedTarget(t *testing.T) {
+	root := t.TempDir()
+	targetRoot := t.TempDir()
+	mismatch := platformMismatchOS()
+
+	applicable := filepath.Join(targetRoot, "applies")
+	skipped := filepath.Join(targetRoot, "skipped")
+
+	writeConfig(t, root, map[string]config.StoreEntry{
+		"helix": {Targets: []config.TargetEntry{
+			{Target: applicable, When: &config.WhenClause{OS: config.Strings{runtime.GOOS}}},
+			{Target: skipped, When: &config.WhenClause{OS: config.Strings{mismatch}}},
+		}},
+	})
+	writeFile(t, filepath.Join(root, "helix", "config.toml"), "ok\n")
+	if err := linker.Link(filepath.Join(root, "helix"), applicable); err != nil {
+		t.Fatalf("Link() error = %v", err)
+	}
+
+	issues := Check(root)
+	assertIssues(t, issues, []Issue{{
+		Level:   "info",
+		Message: fmt.Sprintf("store %q target %q will be skipped on this platform (when: os=%s, current: %s)", "helix", skipped, mismatch, runtime.GOOS),
+	}})
+}
+
+func TestCheckConflictingTargetsIgnoresPlatformMismatch(t *testing.T) {
+	// Two stores claim the same path but on different platforms via per-target
+	// when:. They never run together, so this is not a conflict.
+	root := t.TempDir()
+	targetRoot := t.TempDir()
+	shared := filepath.Join(targetRoot, "helix")
+	mismatch := platformMismatchOS()
+
+	writeConfig(t, root, map[string]config.StoreEntry{
+		"helix-here": {Targets: []config.TargetEntry{
+			{Target: shared, When: &config.WhenClause{OS: config.Strings{runtime.GOOS}}},
+		}},
+		"helix-elsewhere": {Targets: []config.TargetEntry{
+			{Target: shared, When: &config.WhenClause{OS: config.Strings{mismatch}}},
+		}},
+	})
+	writeFile(t, filepath.Join(root, "helix-here", "config.toml"), "ok\n")
+	writeFile(t, filepath.Join(root, "helix-elsewhere", "config.toml"), "ok\n")
+	if err := linker.Link(filepath.Join(root, "helix-here"), shared); err != nil {
+		t.Fatalf("Link() error = %v", err)
+	}
+
+	issues := Check(root)
+	for _, issue := range issues {
+		if issue.Level == "error" {
+			t.Fatalf("unexpected conflict error: %#v", issue)
+		}
+	}
+}
+
 func TestCheckCleanState(t *testing.T) {
 	root := t.TempDir()
 	targetRoot := t.TempDir()

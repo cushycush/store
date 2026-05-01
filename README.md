@@ -357,6 +357,7 @@ Rules:
 | `targets[].files`    | No       | Explicit files to link individually for this target |
 | `targets[].patterns` | No       | Glob patterns to match files for this target        |
 | `targets[].ignore`   | No       | Glob patterns to exclude for this target            |
+| `targets[].when`     | No       | Platform filter scoped to this target only          |
 
 ### `hooks` fields
 
@@ -537,6 +538,22 @@ How it works:
 - Commands that operate on the configured set, such as `store apply`, `store diff`, and `store status`, skip non-matching stores.
 - `store doctor` reports skipped stores as informational issues so you can confirm the filter is doing what you expect.
 
+The same `when:` clause is also valid inside a `targets[]` entry, which is the right tool when one repo directory routes to different paths per platform. Helix is the canonical example: its config lives under `~/.config/helix` on Linux and `~/AppData/Roaming/helix` on Windows, and you want exactly one symlink on each machine.
+
+```yaml
+stores:
+  helix:
+    targets:
+      - target: "~/.config/helix"
+        when:
+          os: linux
+      - target: "~/AppData/Roaming/helix"
+        when:
+          os: windows
+```
+
+A target without a `when:` always applies; a non-matching one is skipped on link, unlink, and status. `store doctor` reports skipped targets the same way it reports skipped stores. Per-target and store-level filters compose: if the store-level `when:` excludes the platform, none of its targets run.
+
 ---
 
 ## Ignoring Files
@@ -648,7 +665,9 @@ alongside groups at the same indent.
 
 ### Command palette
 
-Press `:` anywhere to open a fuzzy-match palette over every CLI verb: `apply`, `init`, `import`, `adopt`, `add`, `modify`, `remove`, `remove --all`, `list`, `path`, `rename`, `edit`, `status`, `diff`, `doctor`, `version`, `target {add,remove,modify}`, `secret {set,get,remove,list}`. Pick an entry with `enter`; the palette prompts inline for any required arguments.
+Press `:` anywhere to open a fuzzy-match palette over every CLI verb: `apply`, `init`, `import`, `adopt`, `add`, `modify`, `remove`, `remove --all`, `list`, `path`, `rename`, `edit`, `status`, `diff`, `doctor`, `version`, `target {add,remove,modify,when}`, `secret {set,get,remove,list}`. Pick an entry with `enter`; the palette prompts inline for any required arguments.
+
+`target when` is the editing path for per-target platform filters: pick a store and a target, then type a `key=value` expression like `os=linux,darwin shell=zsh`. Submit an empty value to clear the filter. The store is unlinked and re-linked in place so the symlink reflects the new filter on the current platform.
 
 ### Destructive actions
 

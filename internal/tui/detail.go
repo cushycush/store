@@ -118,7 +118,9 @@ func RenderDetail(root, name string, cfg *config.Config, pi platform.Info, d *De
 	}
 	b.WriteString("\n")
 
-	// File/target bodies.
+	// File/target bodies. GetStatus only reports applicable targets, so
+	// non-applicable ones get rendered as "skipped on this platform" rather
+	// than the misleading "0/0 missing" they'd show with empty status.
 	results := storeops.GetStatus(root, name, entry)
 	byTarget := groupByTarget(results)
 
@@ -127,6 +129,11 @@ func RenderDetail(root, name string, cfg *config.Config, pi platform.Info, d *De
 		// no-op
 	case len(targets) == 1:
 		t := targets[0]
+		if !targetApplies(t, pi) {
+			b.WriteString("  " + StyleDim.Render("skipped on this platform"))
+			b.WriteString("\n")
+			break
+		}
 		if t.HasFileMode() {
 			b.WriteString(renderFilesBlock(byTarget[t.Target]))
 		} else {
@@ -137,6 +144,11 @@ func RenderDetail(root, name string, cfg *config.Config, pi platform.Info, d *De
 	default:
 		for _, t := range targets {
 			expanded := d.IsExpanded(name, t.Target)
+			if !targetApplies(t, pi) {
+				b.WriteString(renderSkippedTargetRule(t.Target, width))
+				b.WriteString("\n")
+				continue
+			}
 			agg := aggregate(byTarget[t.Target])
 			b.WriteString(renderTargetRule(t.Target, agg, linkedCount(byTarget[t.Target]), totalCount(byTarget[t.Target]), expanded, width))
 			b.WriteString("\n")
@@ -152,6 +164,31 @@ func RenderDetail(root, name string, cfg *config.Config, pi platform.Info, d *De
 		}
 	}
 	return b.String()
+}
+
+// targetApplies reports whether a target's per-target when: clause matches
+// the current platform. Targets without a when: always apply.
+func targetApplies(t config.TargetEntry, pi platform.Info) bool {
+	return t.When == nil || t.When.Matches(pi)
+}
+
+// renderSkippedTargetRule mirrors renderTargetRule's layout for a target
+// that is excluded by its when: clause: same indent, same right-aligned
+// label slot, but everything muted and no expand arrow or count.
+func renderSkippedTargetRule(target string, width int) string {
+	title := "  " + StyleDim.Render(target)
+	right := lipgloss.NewStyle().Foreground(ColorDim).Render("skipped on this platform")
+	innerWidth := width - 2
+	if innerWidth < 20 {
+		innerWidth = 20
+	}
+	titleW := lipgloss.Width(title)
+	rightW := lipgloss.Width(right)
+	fill := innerWidth - titleW - rightW - 1
+	if fill < 1 {
+		fill = 1
+	}
+	return "  " + title + " " + strings.Repeat(" ", fill) + right
 }
 
 // line renders a two-column "label  value" row with aligned columns.

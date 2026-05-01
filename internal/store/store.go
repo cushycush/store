@@ -10,8 +10,13 @@ import (
 	"github.com/cushycush/store/v2/internal/hooks"
 	"github.com/cushycush/store/v2/internal/linker"
 	"github.com/cushycush/store/v2/internal/matcher"
+	"github.com/cushycush/store/v2/internal/platform"
 	"github.com/cushycush/store/v2/internal/render"
 )
+
+// detectPlatform is the platform seam used by per-target when: filtering.
+// Tests override it to exercise platform-specific paths deterministically.
+var detectPlatform = platform.Detect
 
 // needsAutoPromotion checks if the source directory contains files/dirs
 // that match global ignore patterns, requiring promotion from whole-directory
@@ -75,7 +80,7 @@ func printErrors(errors []error) {
 }
 
 func runStoreTargets(root, name string, entry config.StoreEntry, action string, runTarget func(config.TargetEntry) error, failureFmt string) error {
-	targets := entry.ResolvedTargets()
+	targets := entry.ApplicableTargets(detectPlatform())
 	if len(targets) == 0 {
 		return nil
 	}
@@ -199,7 +204,7 @@ func StoreAll(root string, cfg *config.Config) error {
 		if err := Store(root, name, entry); err != nil {
 			errors = append(errors, err)
 		} else {
-			for _, te := range entry.ResolvedTargets() {
+			for _, te := range entry.ApplicableTargets(detectPlatform()) {
 				if shouldUseFileMode(filepath.Join(root, name), te) {
 					fmt.Printf("  %s -> %s (files)\n", name, te.Target)
 				} else {
@@ -229,7 +234,7 @@ func StoreAllWithSecrets(root string, cfg *config.Config, rc *RenderContext) err
 		if err := StoreWithSecrets(root, name, entry, rc); err != nil {
 			errors = append(errors, err)
 		} else {
-			for _, te := range entry.ResolvedTargets() {
+			for _, te := range entry.ApplicableTargets(detectPlatform()) {
 				if shouldUseFileMode(filepath.Join(root, name), te) {
 					fmt.Printf("  %s -> %s (files)\n", name, te.Target)
 				} else {
@@ -376,7 +381,7 @@ func StoreRemoveAll(root string, cfg *config.Config) error {
 		if err := StoreRemove(root, name, entry); err != nil {
 			errors = append(errors, err)
 		} else {
-			for _, te := range entry.ResolvedTargets() {
+			for _, te := range entry.ApplicableTargets(detectPlatform()) {
 				fmt.Printf("  removed %s (%s)\n", name, te.Target)
 			}
 		}
@@ -402,13 +407,18 @@ type StatusInfo struct {
 
 // GetStatus checks the symlink status of a single store (all targets).
 // For file-mode targets, it returns one StatusInfo per matched file.
+// Targets whose when: clause excludes the current platform are skipped.
 func GetStatus(root string, name string, entry config.StoreEntry) []StatusInfo {
-	targets := entry.ResolvedTargets()
-	if len(targets) == 0 {
+	resolved := entry.ResolvedTargets()
+	if len(resolved) == 0 {
 		return []StatusInfo{{
 			Name:  name,
 			Error: fmt.Errorf("no target configured -- did you mean `target: \"~\"`?"),
 		}}
+	}
+	targets := entry.ApplicableTargets(detectPlatform())
+	if len(targets) == 0 {
+		return nil
 	}
 
 	source := filepath.Join(root, name)

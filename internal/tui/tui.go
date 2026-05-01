@@ -708,6 +708,21 @@ func (a *App) dispatchIntent(i Intent) tea.Cmd {
 		}
 		a.openInput("target_modify_files", name+"\x00"+target, "files for "+target, "space-separated list", "")
 		return nil
+	case IntentTargetWhen:
+		name, target := splitTargetArgs(i.Arg)
+		if name == "" {
+			a.openInput("target_when_name", "", "store name", "", "")
+			return nil
+		}
+		if target == "" {
+			a.openInput("target_when_target", name, "target path", "", "")
+			return nil
+		}
+		a.openInput("target_when_value", name+"\x00"+target,
+			"when clause for "+target,
+			"e.g. os=linux,darwin shell=zsh — leave blank to clear",
+			currentTargetWhen(a.cfg, name, target))
+		return nil
 	}
 	return nil
 }
@@ -748,6 +763,10 @@ func (a *App) openRemoveConfirm(name string) {
 	entry := a.cfg.Stores[name]
 	body := []string{"this will:"}
 	for _, t := range entry.ResolvedTargets() {
+		if t.When != nil && !t.When.Matches(a.plat) {
+			body = append(body, "  · "+t.Target+" (skipped on this platform)")
+			continue
+		}
 		body = append(body, "  · unlink "+t.Target)
 	}
 	body = append(body, "  · delete the config entry",
@@ -804,6 +823,21 @@ func (a *App) runInput(action, ctx, value string) tea.Cmd {
 	case "target_modify_target":
 		a.openInput("target_modify_files", value+"\x00"+ctx, "files for "+value, "space-separated list", "")
 		return nil
+	case "target_when_name":
+		a.openInput("target_when_target", value, "target path", "", "")
+		return nil
+	case "target_when_target":
+		a.openInput("target_when_value", ctx+"\x00"+value,
+			"when clause for "+value,
+			"e.g. os=linux,darwin shell=zsh — leave blank to clear",
+			currentTargetWhen(a.cfg, ctx, value))
+		return nil
+	case "target_when_value":
+		parts := strings.SplitN(ctx, "\x00", 2)
+		if len(parts) != 2 {
+			return nil
+		}
+		return CmdTargetWhen(a.root, a.cfg, parts[0], parts[1], value)
 	case "target_modify_files":
 		// ctx packs "name\x00target" so we don't need extra state.
 		parts := strings.SplitN(ctx, "\x00", 2)
@@ -903,6 +937,57 @@ func currentTarget(entry config.StoreEntry) string {
 		return ts[0].Target
 	}
 	return ""
+}
+
+// currentTargetWhen returns the existing per-target when: clause for the
+// named store and target, formatted in the same key=value syntax accepted
+// by parseWhenExpression. Returns "" if the store, target, or when: clause
+// doesn't exist; that empty default communicates "no filter set" without
+// pre-seeding the input.
+func currentTargetWhen(cfg *config.Config, name, target string) string {
+	if cfg == nil {
+		return ""
+	}
+	entry, ok := cfg.Stores[name]
+	if !ok {
+		return ""
+	}
+	for _, t := range entry.ResolvedTargets() {
+		if !sameTargetPath(t.Target, target) {
+			continue
+		}
+		return formatWhenExpression(t.When)
+	}
+	return ""
+}
+
+// formatWhenExpression renders a WhenClause back into the parser's syntax
+// so the input prefill matches what the user would have typed.
+func formatWhenExpression(w *config.WhenClause) string {
+	if w == nil {
+		return ""
+	}
+	var parts []string
+	add := func(key string, vals config.Strings) {
+		if len(vals) == 0 {
+			return
+		}
+		parts = append(parts, key+"="+strings.Join(vals, ","))
+	}
+	add("os", w.OS)
+	add("arch", w.Arch)
+	add("distro", w.Distro)
+	add("distro_version", w.DistroVersion)
+	add("hostname", w.Hostname)
+	add("shell", w.Shell)
+	if w.WSL != nil {
+		if *w.WSL {
+			parts = append(parts, "wsl=true")
+		} else {
+			parts = append(parts, "wsl=false")
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // renderMain composes the whole main view.

@@ -33,7 +33,7 @@ func Check(root string) []Issue {
 	issues = append(issues, checkOrphanedConfigEntries(root, cfg)...)
 	issues = append(issues, checkUnconfiguredDirectories(root, cfg)...)
 	issues = append(issues, checkBrokenSymlinks(root, cfg)...)
-	issues = append(issues, checkConflictingTargets(cfg)...)
+	issues = append(issues, checkConflictingTargets(cfg, platformInfo)...)
 	issues = append(issues, checkMissingSecrets(root, cfg)...)
 	issues = append(issues, checkEmptyStores(root, cfg)...)
 	issues = append(issues, checkPlatformSkippedStores(cfg, platformInfo)...)
@@ -142,7 +142,7 @@ func checkBrokenSymlinks(root string, cfg *config.Config) []Issue {
 	return issues
 }
 
-func checkConflictingTargets(cfg *config.Config) []Issue {
+func checkConflictingTargets(cfg *config.Config, info platform.Info) []Issue {
 	type claim struct {
 		store  string
 		target string
@@ -153,7 +153,10 @@ func checkConflictingTargets(cfg *config.Config) []Issue {
 
 	for _, name := range sortedStoreNames(cfg) {
 		entry := cfg.Stores[name]
-		for _, targetEntry := range entry.ResolvedTargets() {
+		if entry.When != nil && !entry.When.Matches(info) {
+			continue
+		}
+		for _, targetEntry := range entry.ApplicableTargets(info) {
 			normalized := normalizeTarget(targetEntry.Target)
 			if existing, ok := claimed[normalized]; ok && existing.store != name {
 				issues = append(issues, Issue{
@@ -231,13 +234,23 @@ func checkPlatformSkippedStores(cfg *config.Config, info platform.Info) []Issue 
 	var issues []Issue
 	for _, name := range sortedStoreNames(cfg) {
 		entry := cfg.Stores[name]
-		if entry.When == nil || entry.When.Matches(info) {
+		if entry.When != nil && !entry.When.Matches(info) {
+			issues = append(issues, Issue{
+				Level:   "info",
+				Message: platformSkipMessage(name, entry.When, info),
+			})
 			continue
 		}
-		issues = append(issues, Issue{
-			Level:   "info",
-			Message: platformSkipMessage(name, entry.When, info),
-		})
+		// Store applies on this platform; check for individual targets that don't.
+		for _, te := range entry.ResolvedTargets() {
+			if te.When == nil || te.When.Matches(info) {
+				continue
+			}
+			issues = append(issues, Issue{
+				Level:   "info",
+				Message: platformSkipTargetMessage(name, te, info),
+			})
+		}
 	}
 	return issues
 }
@@ -317,6 +330,14 @@ func platformSkipMessage(name string, when *config.WhenClause, info platform.Inf
 		return fmt.Sprintf("store %q will be skipped on this platform", name)
 	}
 	return fmt.Sprintf("store %q will be skipped on this platform (when: %s=%s, current: %s)", name, field, want, current)
+}
+
+func platformSkipTargetMessage(name string, te config.TargetEntry, info platform.Info) string {
+	field, want, current := firstPlatformMismatch(te.When, info)
+	if field == "" {
+		return fmt.Sprintf("store %q target %q will be skipped on this platform", name, te.Target)
+	}
+	return fmt.Sprintf("store %q target %q will be skipped on this platform (when: %s=%s, current: %s)", name, te.Target, field, want, current)
 }
 
 func firstPlatformMismatch(when *config.WhenClause, info platform.Info) (field, want, current string) {

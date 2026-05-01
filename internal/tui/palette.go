@@ -52,6 +52,7 @@ const (
 	IntentTargetAdd
 	IntentTargetRemove
 	IntentTargetModify
+	IntentTargetWhen
 	IntentSecretSet
 	IntentSecretGet
 	IntentSecretRemove
@@ -100,6 +101,8 @@ func PaletteCommands() []PaletteCmd {
 			Build: func(s string) Intent { return Intent{Kind: IntentTargetRemove, Arg: s, Name: "target remove"} }},
 		{Name: "target modify", Summary: "replace files or patterns on a target", Prompt: "<name> <path>",
 			Build: func(s string) Intent { return Intent{Kind: IntentTargetModify, Arg: s, Name: "target modify"} }},
+		{Name: "target when", Summary: "set or clear a target's platform filter", Prompt: "<name> <path>",
+			Build: func(s string) Intent { return Intent{Kind: IntentTargetWhen, Arg: s, Name: "target when"} }},
 		{Name: "secret set", Summary: "create or update an encrypted secret", Prompt: "<name>",
 			Build: func(s string) Intent { return Intent{Kind: IntentSecretSet, Arg: s, Name: "secret set"} }},
 		{Name: "secret get", Summary: "print the value of one decrypted secret", Prompt: "<name>",
