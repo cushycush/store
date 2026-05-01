@@ -4,6 +4,57 @@ All notable changes to `store` are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-05-01
+
+### Added
+
+- **Per-target `when:` clauses.** A `when:` block can now sit inside a
+  `targets[]` entry, scoped to that one target rather than the whole
+  store. The use case is one repo directory that wants to land at
+  different paths per platform: helix lives at `~/.config/helix` on
+  Linux and `~/AppData/Roaming/helix` on Windows, lazygit at
+  `~/.config/lazygit` vs `~/AppData/Local/lazygit`, and so on. Before
+  this you had to either keep two stores in sync or accept dead
+  symlinks pointing at `~/AppData/...` on Linux. Now you write one
+  store with two targets, each filtered to the platform that applies.
+  Targets without a `when:` always apply, and per-target filters
+  compose with the store-level filter (the store-level one runs
+  first; if it rules the store out, none of its targets run).
+  Thanks to @ekmart for proposing this in #61.
+
+- **`target when` in the TUI command palette.** Press `:` and pick
+  `target when` to set or clear a target's filter without leaving the
+  TUI. The prompt accepts space-separated `key=value` pairs like
+  `os=linux,darwin shell=zsh`. Submitting an empty value clears the
+  filter. The store is unlinked and re-linked in place so the symlink
+  state on disk reflects the new filter immediately.
+
+### Changed
+
+- **`store doctor` is platform-aware about target conflicts.** Two
+  stores claiming the same target path are no longer flagged when
+  their `when:` clauses are disjoint, since they never run on the
+  same machine. The check also reports per-target platform skips the
+  same way it already reported store-level ones, so on a Linux box
+  the windows-only target of a multi-target store shows up as an
+  informational `info` issue rather than a missing symlink.
+
+- **TUI detail view shows skipped targets honestly.** A target whose
+  `when:` excludes the current platform now renders as
+  `skipped on this platform` next to its path, in place of the
+  `0/0 missing` it would have shown before. The remove-confirm
+  overlay does the same: skipped targets are listed but tagged so
+  the body matches what `remove` will actually do.
+
+### Fixed
+
+- **TUI no longer drops a per-target `when:` on collapse.** Removing
+  targets in the TUI down to a single remaining one used to migrate
+  the store back to single-target form, which has no slot for a
+  per-target `when:`. The collapse now refuses to run when the
+  remaining target carries a `when:`, so the constraint can't be
+  silently lost on edit.
+
 ## [2.5.1] - 2026-04-27
 
 ### Fixed
