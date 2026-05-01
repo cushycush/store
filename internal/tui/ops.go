@@ -12,6 +12,7 @@ import (
 	"github.com/cushycush/store/v2/internal/doctor"
 	"github.com/cushycush/store/v2/internal/importer"
 	"github.com/cushycush/store/v2/internal/linker"
+	"github.com/cushycush/store/v2/internal/platform"
 	storeops "github.com/cushycush/store/v2/internal/store"
 )
 
@@ -440,10 +441,12 @@ func CmdTargetWhen(root string, cfg *config.Config, name, target, expr string) t
 			return OpResult{Label: "target when", Kind: ActivityErr, Msg: err.Error(), Err: err, Reload: true}
 		}
 		newTarget := entry.Targets[idx]
-		if when == nil {
+		if when == nil || when.Matches(platform.Detect()) {
 			if err := storeops.StoreTarget(root, name, newTarget); err != nil {
 				return OpResult{Label: "target when", Kind: ActivityErr, Msg: err.Error(), Err: err, Reload: true}
 			}
+		}
+		if when == nil {
 			return OpResult{Label: "target when", Kind: ActivityOK, Msg: "cleared when on " + name + " target " + target, Reload: true}
 		}
 		return OpResult{Label: "target when", Kind: ActivityOK, Msg: "set when on " + name + " target " + target, Reload: true}
