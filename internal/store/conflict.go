@@ -75,10 +75,11 @@ func CollectTargetConflicts(root string, name string, te config.TargetEntry) ([]
 	return conflicts, nil
 }
 
-// CollectConflicts checks all targets in a store entry for conflicts.
+// CollectConflicts checks all platform-applicable targets in a store entry
+// for conflicts. Targets excluded by their when: clause are not checked.
 func CollectConflicts(root string, name string, entry config.StoreEntry) ([]ConflictInfo, error) {
 	var all []ConflictInfo
-	for _, te := range entry.ResolvedTargets() {
+	for _, te := range entry.ApplicableTargets(detectPlatform()) {
 		conflicts, err := CollectTargetConflicts(root, name, te)
 		if err != nil {
 			return nil, err

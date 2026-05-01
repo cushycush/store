@@ -7,9 +7,19 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cushycush/store-core/platform"
 	"github.com/cushycush/store/v2/internal/config"
 	"github.com/cushycush/store/v2/internal/linker"
 )
+
+// withPlatform overrides the platform-detection seam for one test and
+// restores the previous value when the test ends.
+func withPlatform(t *testing.T, info platform.Info) {
+	t.Helper()
+	prev := detectPlatform
+	detectPlatform = func() platform.Info { return info }
+	t.Cleanup(func() { detectPlatform = prev })
+}
 
 func createStore(t *testing.T, root, name string, files map[string]string) string {
 	t.Helper()
@@ -918,5 +928,70 @@ func TestGetStatusAll(t *testing.T) {
 	}
 	if shellsInfo.Status != linker.StatusMissing || shellsInfo.Error != nil {
 		t.Fatalf("shells status = %+v, want missing with no error", shellsInfo)
+	}
+}
+
+func TestStorePerTargetWhen(t *testing.T) {
+	root := t.TempDir()
+	createStore(t, root, "helix", map[string]string{"config.toml": "theme = \"base16\""})
+
+	linuxTarget := filepath.Join(root, "linux", "helix")
+	windowsTarget := filepath.Join(root, "windows", "helix")
+
+	entry := config.StoreEntry{Targets: []config.TargetEntry{
+		{Target: linuxTarget, When: &config.WhenClause{OS: config.Strings{"linux"}}},
+		{Target: windowsTarget, When: &config.WhenClause{OS: config.Strings{"windows"}}},
+	}}
+
+	withPlatform(t, platform.Info{OS: "linux"})
+
+	if err := Store(root, "helix", entry); err != nil {
+		t.Fatalf("Store() error = %v", err)
+	}
+
+	assertSymlinkPointsTo(t, linuxTarget, filepath.Join(root, "helix"))
+	assertMissing(t, windowsTarget)
+
+	// GetStatus should also only report the applicable target.
+	status := GetStatus(root, "helix", entry)
+	if len(status) != 1 {
+		t.Fatalf("GetStatus() len = %d, want 1: %+v", len(status), status)
+	}
+	if status[0].Target != linuxTarget {
+		t.Fatalf("GetStatus()[0].Target = %q, want %q", status[0].Target, linuxTarget)
+	}
+	if status[0].Status != linker.StatusLinked {
+		t.Fatalf("GetStatus()[0].Status = %v, want Linked", status[0].Status)
+	}
+
+	// Unlink should also only touch the applicable target. (No-op for the missing one.)
+	if err := StoreRemove(root, "helix", entry); err != nil {
+		t.Fatalf("StoreRemove() error = %v", err)
+	}
+	assertMissing(t, linuxTarget)
+	assertMissing(t, windowsTarget)
+}
+
+func TestStorePerTargetWhenNoneApplicable(t *testing.T) {
+	root := t.TempDir()
+	createStore(t, root, "helix", map[string]string{"config.toml": "theme = \"base16\""})
+
+	target := filepath.Join(root, "windows", "helix")
+	entry := config.StoreEntry{Targets: []config.TargetEntry{
+		{Target: target, When: &config.WhenClause{OS: config.Strings{"windows"}}},
+	}}
+
+	withPlatform(t, platform.Info{OS: "linux"})
+
+	if err := Store(root, "helix", entry); err != nil {
+		t.Fatalf("Store() error = %v", err)
+	}
+	assertMissing(t, target)
+
+	// GetStatus on a store with zero applicable targets returns nothing,
+	// not a "no target configured" error.
+	status := GetStatus(root, "helix", entry)
+	if len(status) != 0 {
+		t.Fatalf("GetStatus() = %+v, want empty", status)
 	}
 }

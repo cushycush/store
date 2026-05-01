@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	core "github.com/cushycush/store-core/config"
+	"github.com/cushycush/store-core/platform"
 	"gopkg.in/yaml.v3"
 )
 
@@ -44,10 +45,11 @@ func FindRoot() (string, error) {
 
 // TargetEntry represents a single target within a store.
 type TargetEntry struct {
-	Target   string   `yaml:"target,omitempty"`
-	Files    []string `yaml:"files,omitempty"`
-	Patterns []string `yaml:"patterns,omitempty"`
-	Ignore   []string `yaml:"ignore,omitempty"`
+	Target   string      `yaml:"target,omitempty"`
+	Files    []string    `yaml:"files,omitempty"`
+	Patterns []string    `yaml:"patterns,omitempty"`
+	Ignore   []string    `yaml:"ignore,omitempty"`
+	When     *WhenClause `yaml:"when,omitempty"`
 }
 
 // HookEntry defines pre and post shell commands to run around store operations.
@@ -95,7 +97,9 @@ func (e StoreEntry) IsMultiTarget() bool {
 }
 
 // ResolvedTargets normalizes both single-target and multi-target formats
-// into a slice of TargetEntry.
+// into a slice of TargetEntry. Per-target when: clauses are not consulted here;
+// use ApplicableTargets when you only want targets that apply on the current
+// platform.
 func (e StoreEntry) ResolvedTargets() []TargetEntry {
 	if len(e.Targets) > 0 {
 		return e.Targets
@@ -109,6 +113,22 @@ func (e StoreEntry) ResolvedTargets() []TargetEntry {
 		Patterns: e.Patterns,
 		Ignore:   e.Ignore,
 	}}
+}
+
+// ApplicableTargets returns the resolved targets that match the current platform
+// according to each target's when: clause. Targets without a when: clause always
+// apply. The store-level when: is filtered separately at the store level
+// (see filterStoresByPlatform), so this method assumes the store itself is in
+// scope and only narrows by target.
+func (e StoreEntry) ApplicableTargets(info platform.Info) []TargetEntry {
+	all := e.ResolvedTargets()
+	out := make([]TargetEntry, 0, len(all))
+	for _, t := range all {
+		if t.When == nil || t.When.Matches(info) {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // Validate checks that the entry is well-formed.
@@ -153,9 +173,14 @@ func (e *StoreEntry) MigrateToMultiTarget() {
 }
 
 // MigrateToSingleTarget converts back to single-target format if only one target remains.
+// Single-target form has no slot for a per-target when: clause, so a remaining target
+// that carries one stays in multi-target form.
 func (e *StoreEntry) MigrateToSingleTarget() {
 	if len(e.Targets) == 1 {
 		t := e.Targets[0]
+		if t.When != nil {
+			return
+		}
 		e.Target = t.Target
 		e.Files = t.Files
 		e.Patterns = t.Patterns
